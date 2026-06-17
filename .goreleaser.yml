@@ -54,6 +54,8 @@ signs:
 release:
   # The Terraform Registry ingests published (non-draft) releases.
   draft: false
+  # Mark -alpha/-beta/-rc tags as GitHub pre-releases automatically.
+  prerelease: auto
 
 changelog:
   disable: true

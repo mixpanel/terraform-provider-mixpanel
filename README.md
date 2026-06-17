@@ -5,8 +5,16 @@ Mixpanel application API. The provider is generated from Mixpanel's OpenAPI spec
 using the [HashiCorp Terraform plugin framework](https://developer.hashicorp.com/terraform/plugin/framework)
 codegen toolchain, with a deterministic CRUD layer on top.
 
-> **Status:** Experimental / community. The schema and resource surface are generated and
-> may change. Pin a version and review plans before applying.
+> ## ⚠️ Alpha — use at your own risk
+>
+> This provider is in **alpha** (`v0.x` / `-alpha` releases). It is **largely
+> untested**: only a subset of resources has been verified end to end, and many
+> have not been exercised against a live project at all. **Breaking changes may
+> land in any release**, including to resource schemas and state.
+>
+> Do **not** use it against production Mixpanel projects you cannot afford to
+> disrupt. Always run `terraform plan` and review the diff before applying, and
+> pin an exact version (`version = "0.1.0-alpha1"`).
 
 ## Requirements
 
