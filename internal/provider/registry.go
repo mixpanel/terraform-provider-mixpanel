@@ -21,8 +21,12 @@ func providerResources() []func() resource.Resource {
 		NewCustomPropertyResource,
 		NewCustomRoleResource,
 		NewDashboardResource,
+		NewDataGovernanceSettingsResource,
 		NewDataGroupResource,
+		NewDatasetResource,
+		NewEventDropFilterResource,
 		NewEmailDigestResource,
+		NewEventDefinitionResource,
 		NewExperimentResource,
 		NewFeatureFlagResource,
 		NewHeatMapResource,
@@ -32,6 +36,7 @@ func providerResources() []func() resource.Resource {
 		NewServiceAccountResource,
 		NewThemeResource,
 		NewWebhookResource,
+		NewWorkspaceResource,
 	}
 }
 
@@ -49,16 +54,21 @@ func providerDataSources() []func() datasource.DataSource {
 		NewCustomPropertyDataSource,
 		NewCustomRoleDataSource,
 		NewDashboardDataSource,
+		NewDatasetDataSource,
 		NewEmailDigestDataSource,
+		NewEventDefinitionDataSource,
 		NewExperimentDataSource,
 		NewFeatureFlagDataSource,
 		NewHeatMapDataSource,
 		NewHeatMapCollectionDataSource,
 		NewMetricDataSource,
 		NewPlaylistDataSource,
+		NewProjectOutgoingIntegrationDataSource,
 		NewRollupProjectDataSource,
 		NewServiceAccountDataSource,
+		NewTagDataSource,
 		NewThemeDataSource,
 		NewWarehouseSourceDataSource,
+		NewWorkspaceDataSource,
 	}
 }

@@ -6,15 +6,13 @@ terraform {
   }
 }
 
-# Credentials are read from MIXPANEL_SERVICE_ACCOUNT, MIXPANEL_SERVICE_ACCOUNT_SECRET,
-# and MIXPANEL_PROJECT_ID when not set explicitly here. Never commit secrets.
 provider "mixpanel" {
-  # service_account        = "my-service-account"
-  # service_account_secret = var.mixpanel_secret
-  # project_id             = "1234567"
-}
+  # Credentials may also be supplied via the MIXPANEL_SERVICE_ACCOUNT,
+  # MIXPANEL_SERVICE_ACCOUNT_SECRET, MIXPANEL_PROJECT_ID, and
+  # MIXPANEL_ORGANIZATION_ID environment variables.
+  service_account        = var.mixpanel_service_account
+  service_account_secret = var.mixpanel_service_account_secret
 
-resource "mixpanel_annotation" "release" {
-  date        = "2026-01-01 00:00:00"
-  description = "v2.0 release"
+  # Default project for project-scoped resources. Placeholder ID only.
+  project_id = "1234567"
 }
