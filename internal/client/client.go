@@ -77,7 +77,13 @@ func preserveMethodOnRedirect(req *http.Request, via []*http.Request) error {
 	}
 	prev := via[len(via)-1]
 	req.Method = prev.Method
-	req.Header.Set("Authorization", prev.Header.Get("Authorization"))
+	// Only re-attach credentials on a SAME-HOST redirect. Go's stdlib deliberately
+	// strips the Authorization header when a redirect crosses to a different host so
+	// the Basic-auth service-account credentials are never leaked to another domain;
+	// re-adding it unconditionally would defeat that protection.
+	if req.URL.Host == prev.URL.Host {
+		req.Header.Set("Authorization", prev.Header.Get("Authorization"))
+	}
 	if ct := prev.Header.Get("Content-Type"); ct != "" {
 		req.Header.Set("Content-Type", ct)
 	}

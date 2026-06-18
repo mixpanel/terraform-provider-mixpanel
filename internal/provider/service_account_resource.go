@@ -143,10 +143,16 @@ func (r *ServiceAccountResource) Read(ctx context.Context, req resource.ReadRequ
 }
 
 func (r *ServiceAccountResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	// No update verb for service_account: all mutable attributes should be ForceNew at
-	// the schema level, so Update should never be reached for a real diff. Copy
-	// the planned raw value straight into state to keep them consistent.
-	resp.State.Raw = req.Plan.Raw
+	// service_account has no update operation in the API (create/read/delete only), so an
+	// in-place attribute change cannot be persisted. This previously copied the
+	// plan straight into state, reporting success while the server kept the old
+	// values (silent drift / data loss). Fail loudly instead; the practitioner must
+	// replace the resource to change an immutable attribute.
+	resp.Diagnostics.AddError(
+		"service_account does not support in-place update",
+		"This resource's API has no update operation, so changing an attribute cannot be applied in place. "+
+			"Recreate the resource to apply the change: run `terraform apply -replace=<resource address>` (or taint it).",
+	)
 }
 
 func (r *ServiceAccountResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

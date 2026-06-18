@@ -37,8 +37,10 @@ func NewFeatureFlagResource() resource.Resource {
 
 type FeatureFlagResource struct {
 	client *client.Client
-	// cachedWorkspaceID memoizes the resolved workspace id for this apply.
-	cachedWorkspaceID string
+	// cachedWorkspaceID memoizes the resolved workspace id per project id, so a
+	// config using project_id overrides across multiple projects resolves the
+	// correct workspace for each instead of reusing the first one resolved.
+	cachedWorkspaceID map[string]string
 }
 
 func (r *FeatureFlagResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -111,16 +113,20 @@ func (r *FeatureFlagResource) projectID(ctx context.Context, raw tftypes.Value) 
 
 // workspaceID returns the workspace id used to template the feature_flag CRUD path.
 // The project-only feature_flag route requires a workspace, so we target the
-// project's canonical workspace (global "All Project Data", else default) and
-// cache it for the lifetime of this resource instance.
+// project's canonical workspace (global "All Project Data", else default),
+// memoized per project id for the lifetime of this resource instance so that a
+// config targeting multiple projects resolves the correct workspace for each.
 func (r *FeatureFlagResource) workspaceID(projectID string) string {
-	if r.cachedWorkspaceID != "" {
-		return r.cachedWorkspaceID
+	if r.cachedWorkspaceID == nil {
+		r.cachedWorkspaceID = map[string]string{}
+	}
+	if ws, ok := r.cachedWorkspaceID[projectID]; ok && ws != "" {
+		return ws
 	}
 	if ws, err := r.client.DefaultWorkspaceID(context.Background(), projectID); err == nil && ws != "" {
-		r.cachedWorkspaceID = ws
+		r.cachedWorkspaceID[projectID] = ws
 	}
-	return r.cachedWorkspaceID
+	return r.cachedWorkspaceID[projectID]
 }
 
 func (r *FeatureFlagResource) collectionPath(projectID string) string {
