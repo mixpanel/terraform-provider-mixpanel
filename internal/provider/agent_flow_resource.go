@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
@@ -46,6 +45,7 @@ func (r *AgentFlowResource) Metadata(ctx context.Context, req resource.MetadataR
 func (r *AgentFlowResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	s := rsc.AgentFlowResourceSchema(ctx)
 	s.Attributes["graph"] = schema.StringAttribute{Optional: true, Computed: true}
+	stabilizeComputed(s.Attributes)
 	resp.Schema = s
 }
 
@@ -194,7 +194,16 @@ func (r *AgentFlowResource) Delete(ctx context.Context, req resource.DeleteReque
 }
 
 func (r *AgentFlowResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+	parts := strings.SplitN(req.ID, ":", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		resp.Diagnostics.AddError(
+			"Invalid import ID",
+			fmt.Sprintf("expected import ID in the form \"project_id:<id>\", got %q", req.ID),
+		)
+		return
+	}
+	setImportID(ctx, &resp.State, &resp.Diagnostics, "project_id", parts[0], "int64")
+	setImportID(ctx, &resp.State, &resp.Diagnostics, "id", parts[1], "string")
 }
 
 // writeAgentFlowState turns an unwrapped API body into resource state. base is the
@@ -208,6 +217,7 @@ func (r *AgentFlowResource) writeAgentFlowState(ctx context.Context, state *tfsd
 	if projectID != "" {
 		extras["project_id"] = projectID
 	}
+	extras["agent_flow_id"] = id
 	schemaType := state.Schema.Type().TerraformType(ctx)
 	val, err := client.RawFromWireMerged(schemaType, base, wire, extras, AgentFlowAttrSpec())
 	if err != nil {

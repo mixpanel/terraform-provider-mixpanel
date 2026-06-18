@@ -34,6 +34,15 @@ resource "mixpanel_canvas" "test" {
 					},
 				},
 			},
+			{
+				// Import the resource and assert state round-trips through Read.
+				ResourceName:                         "mixpanel_canvas.test",
+				ImportState:                          true,
+				ImportStateVerify:                    true,
+				ImportStateVerifyIdentifierAttribute: "id",
+				ImportStateIdFunc:                    importIDFunc("mixpanel_canvas.test", "id", "project_id"),
+				ImportStateVerifyIgnore:              []string{"content_type", "created", "creator_email", "creator_id", "creator_name", "is_favorited", "last_modified_by_email", "last_modified_by_id", "last_modified_by_name", "modified", "pinned_date", "room_id"},
+			},
 		},
 	})
 }

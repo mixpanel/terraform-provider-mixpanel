@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
@@ -47,6 +46,7 @@ func (r *CustomAlertResource) Schema(ctx context.Context, req resource.SchemaReq
 	s := rsc.CustomAlertResourceSchema(ctx)
 	s.Attributes["condition"] = schema.StringAttribute{Optional: true, Computed: true}
 	s.Attributes["subscriptions"] = schema.StringAttribute{Optional: true, Computed: true}
+	stabilizeComputed(s.Attributes)
 	resp.Schema = s
 }
 
@@ -195,7 +195,16 @@ func (r *CustomAlertResource) Delete(ctx context.Context, req resource.DeleteReq
 }
 
 func (r *CustomAlertResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+	parts := strings.SplitN(req.ID, ":", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		resp.Diagnostics.AddError(
+			"Invalid import ID",
+			fmt.Sprintf("expected import ID in the form \"project_id:<id>\", got %q", req.ID),
+		)
+		return
+	}
+	setImportID(ctx, &resp.State, &resp.Diagnostics, "project_id", parts[0], "int64")
+	setImportID(ctx, &resp.State, &resp.Diagnostics, "id", parts[1], "int64")
 }
 
 // writeCustomAlertState turns an unwrapped API body into resource state. base is the
@@ -209,6 +218,7 @@ func (r *CustomAlertResource) writeCustomAlertState(ctx context.Context, state *
 	if projectID != "" {
 		extras["project_id"] = projectID
 	}
+	extras["custom_alert_id"] = id
 	schemaType := state.Schema.Type().TerraformType(ctx)
 	val, err := client.RawFromWireMerged(schemaType, base, wire, extras, CustomAlertAttrSpec())
 	if err != nil {

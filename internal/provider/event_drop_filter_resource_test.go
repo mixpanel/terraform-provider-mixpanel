@@ -21,6 +21,15 @@ resource "mixpanel_event_drop_filter" "test" {
   event_name = "tf-acc-event"
 }`),
 			},
+			{
+				// Import the resource and assert state round-trips through Read.
+				ResourceName:                         "mixpanel_event_drop_filter.test",
+				ImportState:                          true,
+				ImportStateVerify:                    true,
+				ImportStateVerifyIdentifierAttribute: "id",
+				ImportStateIdFunc:                    importIDFunc("mixpanel_event_drop_filter.test", "id", "project_id"),
+				ImportStateVerifyIgnore:              []string{"created", "deleted", "display_name", "filters", "legacy"},
+			},
 		},
 	})
 }

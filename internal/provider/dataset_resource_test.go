@@ -38,6 +38,15 @@ resource "mixpanel_dataset" "test" {
 					},
 				},
 			},
+			{
+				// Import the resource and assert state round-trips through Read.
+				ResourceName:                         "mixpanel_dataset.test",
+				ImportState:                          true,
+				ImportStateVerify:                    true,
+				ImportStateVerifyIdentifierAttribute: "dataset_id",
+				ImportStateIdFunc:                    importIDFunc("mixpanel_dataset.test", "dataset_id", "project_id"),
+				ImportStateVerifyIgnore:              []string{"dataset_secrets"},
+			},
 		},
 	})
 }

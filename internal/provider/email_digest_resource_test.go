@@ -21,6 +21,15 @@ resource "mixpanel_email_digest" "test" {
 
 }`),
 			},
+			{
+				// Import the resource and assert state round-trips through Read.
+				ResourceName:                         "mixpanel_email_digest.test",
+				ImportState:                          true,
+				ImportStateVerify:                    true,
+				ImportStateVerifyIdentifierAttribute: "id",
+				ImportStateIdFunc:                    importIDFunc("mixpanel_email_digest.test", "id", "project_id"),
+				ImportStateVerifyIgnore:              []string{"confirmed_date", "created", "creator_email", "creator_id", "dashboard_creator_email", "dashboard_foreign_private", "dashboard_has_owner_with_permissions", "dashboard_title", "digest_has_owner_with_permissions", "has_active_user", "schedule", "slack_subscriptions", "status", "workspace_id", "workspace_name"},
+			},
 		},
 	})
 }

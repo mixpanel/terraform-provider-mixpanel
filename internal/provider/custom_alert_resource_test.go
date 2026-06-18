@@ -40,6 +40,15 @@ resource "mixpanel_custom_alert" "test" {
 					},
 				},
 			},
+			{
+				// Import the resource and assert state round-trips through Read.
+				ResourceName:                         "mixpanel_custom_alert.test",
+				ImportState:                          true,
+				ImportStateVerify:                    true,
+				ImportStateVerifyIdentifierAttribute: "id",
+				ImportStateIdFunc:                    importIDFunc("mixpanel_custom_alert.test", "id", "project_id"),
+				ImportStateVerifyIgnore:              []string{"condition", "subscriptions"},
+			},
 		},
 	})
 }

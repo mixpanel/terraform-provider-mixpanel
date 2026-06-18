@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
@@ -45,7 +44,7 @@ func (r *RollupProjectResource) Metadata(ctx context.Context, req resource.Metad
 
 func (r *RollupProjectResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	s := rsc.RollupProjectResourceSchema(ctx)
-
+	stabilizeComputed(s.Attributes)
 	resp.Schema = s
 }
 
@@ -191,7 +190,11 @@ func (r *RollupProjectResource) Delete(ctx context.Context, req resource.DeleteR
 }
 
 func (r *RollupProjectResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("rollup_project_id"), req, resp)
+	if req.ID == "" {
+		resp.Diagnostics.AddError("Invalid import ID", "import ID must not be empty")
+		return
+	}
+	setImportID(ctx, &resp.State, &resp.Diagnostics, "rollup_project_id", req.ID, "int64")
 }
 
 // writeRollupProjectState turns an unwrapped API body into resource state. base is the

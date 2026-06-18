@@ -34,6 +34,15 @@ resource "mixpanel_service_account" "test" {
 					},
 				},
 			},
+			{
+				// Import the resource and assert state round-trips through Read.
+				ResourceName:                         "mixpanel_service_account.test",
+				ImportState:                          true,
+				ImportStateVerify:                    true,
+				ImportStateVerifyIdentifierAttribute: "id",
+				ImportStateIdFunc:                    importIDFunc("mixpanel_service_account.test", "id", "organization_id"),
+				ImportStateVerifyIgnore:              []string{"created", "creator", "creator_email", "creator_name", "expires", "last_used", "token", "user"},
+			},
 		},
 	})
 }

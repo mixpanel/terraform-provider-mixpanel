@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
@@ -47,6 +46,7 @@ func (r *DataGovernanceSettingsResource) Schema(ctx context.Context, req resourc
 	s := rsc.DataGovernanceSettingsResourceSchema(ctx)
 	s.Attributes["id"] = schema.StringAttribute{Computed: true}
 	s.Attributes["data_standards"] = schema.StringAttribute{Optional: true, Computed: true}
+	stabilizeComputed(s.Attributes)
 	resp.Schema = s
 }
 
@@ -179,7 +179,15 @@ func (r *DataGovernanceSettingsResource) Delete(ctx context.Context, req resourc
 }
 
 func (r *DataGovernanceSettingsResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+	if req.ID == "" {
+		resp.Diagnostics.AddError(
+			"Invalid import ID",
+			"expected import ID to be the project id (the singleton has no separate id)",
+		)
+		return
+	}
+	setImportID(ctx, &resp.State, &resp.Diagnostics, "project_id", req.ID, "int64")
+	setImportID(ctx, &resp.State, &resp.Diagnostics, "id", req.ID, "string")
 }
 
 // writeDataGovernanceSettingsState turns an unwrapped API body into resource state. base is the

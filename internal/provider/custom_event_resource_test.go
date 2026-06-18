@@ -21,6 +21,15 @@ resource "mixpanel_custom_event" "test" {
 
 }`),
 			},
+			{
+				// Import the resource and assert state round-trips through Read.
+				ResourceName:                         "mixpanel_custom_event.test",
+				ImportState:                          true,
+				ImportStateVerify:                    true,
+				ImportStateVerifyIdentifierAttribute: "customevent_id",
+				ImportStateIdFunc:                    importIDFunc("mixpanel_custom_event.test", "customevent_id", "project_id"),
+				ImportStateVerifyIgnore:              []string{"custom_event"},
+			},
 		},
 	})
 }

@@ -11,9 +11,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"strconv"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64planmodifier"
@@ -81,6 +83,45 @@ func requireReplace(attrs map[string]schema.Attribute, names ...string) {
 		case schema.SingleNestedAttribute:
 			a.PlanModifiers = append(a.PlanModifiers, objectplanmodifier.RequiresReplace())
 			attrs[n] = a
+		}
+	}
+}
+
+// stabilizeComputed adds a type-appropriate UseStateForUnknown plan modifier to
+// every Computed attribute, so a value the server populated (already in state) is
+// preserved across plans instead of being re-planned as "(known after apply)".
+// This keeps applies idempotent and -- critically -- lets an IMPORTED resource
+// reach a clean plan: without it, computed fields the API echoes
+// (annotation.user/user_id, the resolved project_id, the server id) flip to
+// unknown on every plan and force a spurious in-place change.
+func stabilizeComputed(attrs map[string]schema.Attribute) {
+	for n := range attrs {
+		switch a := attrs[n].(type) {
+		case schema.BoolAttribute:
+			if a.Computed {
+				a.PlanModifiers = append(a.PlanModifiers, boolplanmodifier.UseStateForUnknown())
+				attrs[n] = a
+			}
+		case schema.Float64Attribute:
+			if a.Computed {
+				a.PlanModifiers = append(a.PlanModifiers, float64planmodifier.UseStateForUnknown())
+				attrs[n] = a
+			}
+		case schema.Int64Attribute:
+			if a.Computed {
+				a.PlanModifiers = append(a.PlanModifiers, int64planmodifier.UseStateForUnknown())
+				attrs[n] = a
+			}
+		case schema.NumberAttribute:
+			if a.Computed {
+				a.PlanModifiers = append(a.PlanModifiers, numberplanmodifier.UseStateForUnknown())
+				attrs[n] = a
+			}
+		case schema.StringAttribute:
+			if a.Computed {
+				a.PlanModifiers = append(a.PlanModifiers, stringplanmodifier.UseStateForUnknown())
+				attrs[n] = a
+			}
 		}
 	}
 }
@@ -174,6 +215,55 @@ func findInList(respBody []byte, enveloped bool, dottedPath, wantID string) (map
 		}
 	}
 	return nil, false, nil
+}
+
+// collectIDsFromList unwraps a collection GET response (optionally enveloped) into
+// its `results` array and returns the identity value of every element at dottedPath
+// (default "id"), rendered as a string. Null / missing ids are skipped (some list
+// item id fields are nullable, e.g. custom_alert). The order of the API response is
+// preserved so the result is deterministic. Used by the plural list data sources.
+func collectIDsFromList(respBody []byte, enveloped bool, dottedPath string) ([]string, error) {
+	body := respBody
+	if enveloped {
+		inner, err := client.UnwrapEnvelope(respBody)
+		if err != nil {
+			return nil, err
+		}
+		body = inner
+	}
+	out := []string{}
+	if len(body) == 0 {
+		return out, nil
+	}
+	var arr []any
+	dec := json.NewDecoder(strings.NewReader(string(body)))
+	dec.UseNumber()
+	if err := dec.Decode(&arr); err != nil {
+		// Not a JSON array (unexpected for these endpoints) -- return empty, not
+		// error, so an empty/odd list yields zero ids rather than failing the plan.
+		return out, nil
+	}
+	for _, e := range arr {
+		m, ok := e.(map[string]any)
+		if !ok {
+			continue
+		}
+		nm := normalizeNumbers(m).(map[string]any)
+		if id, ok := nestedID(nm, dottedPath); ok && id != "" {
+			out = append(out, id)
+		}
+	}
+	return out, nil
+}
+
+// compositeImportID renders the "<project_id>:<id>" composite import id consumed by
+// the resource ImportState. When projectID is empty (unscoped entity) the bare id is
+// returned so the value is still a valid single-segment import id.
+func compositeImportID(projectID, id string) string {
+	if projectID == "" {
+		return id
+	}
+	return projectID + ":" + id
 }
 
 // selectNewestFromList selects, from a collection mutation response (the FULL
@@ -400,4 +490,36 @@ func nestedID(wire map[string]any, dottedPath string) (string, bool) {
 // schemaTypeOfDataSource returns the tftypes.Type of a data source state schema.
 func schemaTypeOfDataSource(ctx context.Context, state tfsdk.State) tftypes.Type {
 	return state.Schema.Type().TerraformType(ctx)
+}
+
+// setImportID sets a parsed import-id segment onto the named root attribute of
+// import state, choosing the wire type from kind ("string" | "int64" | "number").
+// Terraform import ids are always strings, but the target attribute may be an
+// Int64Attribute or NumberAttribute, in which case the raw segment is parsed.
+// On a parse failure it appends an "Invalid import ID" diagnostic and returns.
+func setImportID(ctx context.Context, state *tfsdk.State, diags *diag.Diagnostics, attr, raw, kind string) {
+	switch kind {
+	case "int64":
+		n, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			diags.AddError(
+				"Invalid import ID",
+				fmt.Sprintf("attribute %q expects an integer id, got %q: %s", attr, raw, err),
+			)
+			return
+		}
+		diags.Append(state.SetAttribute(ctx, path.Root(attr), n)...)
+	case "number", "float64":
+		f, _, err := big.ParseFloat(raw, 10, 512, big.ToNearestEven)
+		if err != nil {
+			diags.AddError(
+				"Invalid import ID",
+				fmt.Sprintf("attribute %q expects a numeric id, got %q: %s", attr, raw, err),
+			)
+			return
+		}
+		diags.Append(state.SetAttribute(ctx, path.Root(attr), f)...)
+	default: // "string"
+		diags.Append(state.SetAttribute(ctx, path.Root(attr), raw)...)
+	}
 }

@@ -36,6 +36,15 @@ resource "mixpanel_theme" "test" {
 					},
 				},
 			},
+			{
+				// Import the resource and assert state round-trips through Read.
+				ResourceName:                         "mixpanel_theme.test",
+				ImportState:                          true,
+				ImportStateVerify:                    true,
+				ImportStateVerifyIdentifierAttribute: "theme_id",
+				ImportStateIdFunc:                    importIDFunc("mixpanel_theme.test", "theme_id", "project_id"),
+				ImportStateVerifyIgnore:              []string{"data"},
+			},
 		},
 	})
 }

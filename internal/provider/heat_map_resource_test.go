@@ -36,6 +36,15 @@ resource "mixpanel_heat_map" "test" {
 					},
 				},
 			},
+			{
+				// Import the resource and assert state round-trips through Read.
+				ResourceName:                         "mixpanel_heat_map.test",
+				ImportState:                          true,
+				ImportStateVerify:                    true,
+				ImportStateVerifyIdentifierAttribute: "id",
+				ImportStateIdFunc:                    importIDFunc("mixpanel_heat_map.test", "id", "project_id"),
+				ImportStateVerifyIgnore:              []string{"allow_staff_override", "can_pin", "can_share", "can_update_basic", "can_view", "filters", "goal", "goal_weight", "is_shared_with_project", "is_superadmin", "last_modified_by_email", "last_modified_by_id", "last_modified_by_name", "time_filter"},
+			},
 		},
 	})
 }

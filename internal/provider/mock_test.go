@@ -25,7 +25,39 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
+
+// importIDFunc returns an ImportStateIdFunc that reconstructs the import id from the
+// prior state of the named resource. idAttr is the resource's identity attribute
+// (ent.identity_attr). scopeAttr names the scope attribute whose value prefixes the
+// id as "<scope>:<id>" — "project_id" for project/workspace-scoped resources,
+// "organization_id" for org-scoped resources, and "" for unscoped/singleton
+// resources (the bare id, which for a singleton already equals the project id).
+// This matches the composite, scope-aware ImportState parser. The default provider
+// scope value ("1") backstops an empty prior-state scope attribute.
+func importIDFunc(resourceName, idAttr, scopeAttr string) resource.ImportStateIdFunc {
+	return func(s *terraform.State) (string, error) {
+		rs, ok := s.RootModule().Resources[resourceName]
+		if !ok {
+			return "", fmt.Errorf("resource %s not found in state", resourceName)
+		}
+		id := rs.Primary.Attributes[idAttr]
+		if id == "" {
+			id = rs.Primary.ID
+		}
+		if scopeAttr == "" {
+			return id, nil
+		}
+		scope := rs.Primary.Attributes[scopeAttr]
+		if scope == "" {
+			// Provider default from providerConfig.
+			scope = "1"
+		}
+		return scope + ":" + id, nil
+	}
+}
 
 // testProtoV6 wires the provider under test for resource.Test.
 var testProtoV6 = map[string]func() (tfprotov6.ProviderServer, error){
@@ -86,6 +118,24 @@ func (m *mockServer) handle(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		body := m.parseBody(r)
 		var idStr string
+		if seg := lastSegment(r.URL.Path); !m.opts.listCreate {
+			if _, exists := m.store[seg]; exists {
+				// POST to an existing instance id is an in-place update (some
+				// endpoints use POST, not PUT/PATCH, as their update verb, e.g.
+				// data_group). Merge into the stored object under the same id so the
+				// object is mutated rather than duplicated under a fresh id -- which
+				// matches the real API and keeps the post-update id stable for the
+				// import round-trip.
+				obj := m.store[seg]
+				for k, v := range body {
+					obj[k] = v
+				}
+				obj[m.opts.idField] = m.idValue(seg)
+				m.store[seg] = obj
+				m.respond(w, seg, obj)
+				return
+			}
+		}
 		if m.opts.upsert {
 			// Upsert: the id is supplied by the configuration and templated into
 			// the POST path (create-to-instance), not assigned by the server.

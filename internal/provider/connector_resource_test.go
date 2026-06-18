@@ -21,6 +21,15 @@ resource "mixpanel_connector" "test" {
 
 }`),
 			},
+			{
+				// Import the resource and assert state round-trips through Read.
+				ResourceName:                         "mixpanel_connector.test",
+				ImportState:                          true,
+				ImportStateVerify:                    true,
+				ImportStateVerifyIdentifierAttribute: "connector_id",
+				ImportStateIdFunc:                    importIDFunc("mixpanel_connector.test", "connector_id", "project_id"),
+				ImportStateVerifyIgnore:              []string{"category_properties", "connector_properties", "created_at", "created_by", "failure_message", "status"},
+			},
 		},
 	})
 }
