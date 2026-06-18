@@ -14,6 +14,16 @@ import (
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/numberplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 
@@ -22,6 +32,58 @@ import (
 
 // diagAppender is the subset of diag.Diagnostics used by generated state writers.
 type diagAppender = diag.Diagnostics
+
+// requireReplace marks the named top-level schema attributes as RequiresReplace,
+// so any change to one forces the resource to be replaced (destroy + create). It
+// is used by resources whose API has no update operation: an in-place change is
+// impossible, so the only correct apply for a changed attribute is a replacement.
+// The plan-modifier value is typed per attribute kind, hence the type switch; an
+// unknown attribute name or an attribute kind not listed here is skipped.
+func requireReplace(attrs map[string]schema.Attribute, names ...string) {
+	for _, n := range names {
+		switch a := attrs[n].(type) {
+		case schema.BoolAttribute:
+			a.PlanModifiers = append(a.PlanModifiers, boolplanmodifier.RequiresReplace())
+			attrs[n] = a
+		case schema.Float64Attribute:
+			a.PlanModifiers = append(a.PlanModifiers, float64planmodifier.RequiresReplace())
+			attrs[n] = a
+		case schema.Int64Attribute:
+			a.PlanModifiers = append(a.PlanModifiers, int64planmodifier.RequiresReplace())
+			attrs[n] = a
+		case schema.NumberAttribute:
+			a.PlanModifiers = append(a.PlanModifiers, numberplanmodifier.RequiresReplace())
+			attrs[n] = a
+		case schema.StringAttribute:
+			a.PlanModifiers = append(a.PlanModifiers, stringplanmodifier.RequiresReplace())
+			attrs[n] = a
+		case schema.ListAttribute:
+			a.PlanModifiers = append(a.PlanModifiers, listplanmodifier.RequiresReplace())
+			attrs[n] = a
+		case schema.ListNestedAttribute:
+			a.PlanModifiers = append(a.PlanModifiers, listplanmodifier.RequiresReplace())
+			attrs[n] = a
+		case schema.MapAttribute:
+			a.PlanModifiers = append(a.PlanModifiers, mapplanmodifier.RequiresReplace())
+			attrs[n] = a
+		case schema.MapNestedAttribute:
+			a.PlanModifiers = append(a.PlanModifiers, mapplanmodifier.RequiresReplace())
+			attrs[n] = a
+		case schema.SetAttribute:
+			a.PlanModifiers = append(a.PlanModifiers, setplanmodifier.RequiresReplace())
+			attrs[n] = a
+		case schema.SetNestedAttribute:
+			a.PlanModifiers = append(a.PlanModifiers, setplanmodifier.RequiresReplace())
+			attrs[n] = a
+		case schema.ObjectAttribute:
+			a.PlanModifiers = append(a.PlanModifiers, objectplanmodifier.RequiresReplace())
+			attrs[n] = a
+		case schema.SingleNestedAttribute:
+			a.PlanModifiers = append(a.PlanModifiers, objectplanmodifier.RequiresReplace())
+			attrs[n] = a
+		}
+	}
+}
 
 // unwrapBody optionally unwraps the BaseOkResponseModel envelope and decodes the
 // (unenveloped) body into a map. A non-object body yields an empty map.

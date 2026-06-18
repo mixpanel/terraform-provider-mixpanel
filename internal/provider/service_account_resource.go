@@ -45,7 +45,7 @@ func (r *ServiceAccountResource) Metadata(ctx context.Context, req resource.Meta
 
 func (r *ServiceAccountResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	s := rsc.ServiceAccountResourceSchema(ctx)
-
+	requireReplace(s.Attributes, "organization_id", "projects", "role", "serviceaccount_id", "username")
 	resp.Schema = s
 }
 
@@ -143,15 +143,16 @@ func (r *ServiceAccountResource) Read(ctx context.Context, req resource.ReadRequ
 }
 
 func (r *ServiceAccountResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	// service_account has no update operation in the API (create/read/delete only), so an
-	// in-place attribute change cannot be persisted. This previously copied the
-	// plan straight into state, reporting success while the server kept the old
-	// values (silent drift / data loss). Fail loudly instead; the practitioner must
-	// replace the resource to change an immutable attribute.
+	// service_account has no update operation in the API (create/read/delete only). Every
+	// user-settable attribute is marked RequiresReplace in Schema (via the
+	// requireReplace helper), so a changed attribute is planned as a replacement
+	// and this method is never reached for a real diff. It remains as a defensive
+	// backstop: fail loudly rather than silently copy the plan into state (which
+	// would report success while leaving the server unchanged).
 	resp.Diagnostics.AddError(
 		"service_account does not support in-place update",
-		"This resource's API has no update operation, so changing an attribute cannot be applied in place. "+
-			"Recreate the resource to apply the change: run `terraform apply -replace=<resource address>` (or taint it).",
+		"This resource's API has no update operation; changing an attribute replaces the resource. "+
+			"Reaching this error is unexpected (attributes are marked RequiresReplace) — please report it.",
 	)
 }
 
