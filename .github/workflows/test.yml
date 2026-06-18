@@ -20,4 +20,33 @@ jobs:
           cache: true
       - run: go build ./...
       - run: go vet ./...
+      # Acceptance tests are gated by TF_ACC and skipped here; this still compiles
+      # them and runs the client unit tests.
       - run: go test ./...
+
+  # Mock-server acceptance tests: a full plan/apply/refresh/destroy lifecycle per
+  # resource against an in-process echo server (no real Mixpanel API, no creds).
+  acctest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: "go.mod"
+          cache: true
+      - uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1
+        with:
+          tofu_version: "1.12.2"
+          # Install the real binary on PATH (no wrapper script) so the plugin
+          # testing framework can invoke it directly.
+          tofu_wrapper: false
+      - name: Acceptance tests
+        env:
+          TF_ACC: "1"
+          # The testing framework drives an OpenTofu binary; point it at tofu and
+          # use the OpenTofu registry namespace for the dev-override provider addr.
+          TF_ACC_PROVIDER_HOST: registry.opentofu.org
+          TF_ACC_PROVIDER_NAMESPACE: hashicorp
+        run: |
+          export TF_ACC_TERRAFORM_PATH="$(command -v tofu)"
+          go test ./internal/provider/ -run TestAcc -timeout 20m
