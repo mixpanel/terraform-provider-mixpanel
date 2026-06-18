@@ -1,0 +1,26 @@
+---
+page_title: "{{.RenderedProviderName}} Provider"
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.RenderedProviderName}} Provider
+
+> ## ⚠️ Alpha — use at your own risk
+>
+> This provider is in **alpha** (`v0.x` / `-alpha` releases). It is **largely
+> untested**: only a subset of resources has been verified end to end, and many
+> have not been exercised against a live project at all. **Breaking changes may
+> land in any release**, including to resource schemas and state.
+>
+> Do **not** use it against production Mixpanel projects you cannot afford to
+> disrupt. Always run `terraform plan` and review the diff before applying, and
+> pin an exact version.
+
+{{ .Description | trimspace }}
+
+## Example Usage
+
+{{ tffile "examples/provider/provider.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}

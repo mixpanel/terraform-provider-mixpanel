@@ -1,0 +1,21 @@
+# Terraform state & local config (may contain secrets / resource data)
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+.terraform/
+.terraform.lock.hcl
+.terraformrc
+terraform.rc
+crash.log
+crash.*.log
+
+# Credentials / local env
+.env
+.env.*
+
+# Built provider binary & release artifacts
+terraform-provider-mixpanel
+terraform-provider-mixpanel_*
+dist/
+*.exe
