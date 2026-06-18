@@ -176,6 +176,145 @@ func findInList(respBody []byte, enveloped bool, dottedPath, wantID string) (map
 	return nil, false, nil
 }
 
+// selectNewestFromList selects, from a collection mutation response (the FULL
+// list returned by a body-id create), the element matching matchAttr==matchVal,
+// choosing the numerically-largest id at dottedPath. Body-id creates (e.g. event
+// drop filters) return the whole list rather than the created row, and the new row
+// is unique by its match attribute (duplicates are rejected server-side); when more
+// than one historically matched, the largest id is the just-created one. Returns
+// the matched object, its id rendered as a string, and any decode error.
+func selectNewestFromList(respBody []byte, enveloped bool, dottedPath, matchAttr, matchVal string) (map[string]any, string, error) {
+	body := respBody
+	if enveloped {
+		inner, err := client.UnwrapEnvelope(respBody)
+		if err != nil {
+			return nil, "", err
+		}
+		body = inner
+	}
+	if len(body) == 0 {
+		return nil, "", nil
+	}
+	var arr []any
+	dec := json.NewDecoder(strings.NewReader(string(body)))
+	dec.UseNumber()
+	if err := dec.Decode(&arr); err != nil {
+		// Not a JSON array; nothing to select.
+		return nil, "", nil
+	}
+	var best map[string]any
+	var bestID string
+	var bestNum *big.Float
+	haveBest := false
+	for _, e := range arr {
+		m, ok := e.(map[string]any)
+		if !ok {
+			continue
+		}
+		nm := normalizeNumbers(m).(map[string]any)
+		got, ok := nestedID(nm, matchAttr)
+		if !ok || got != matchVal {
+			continue
+		}
+		idStr, ok := nestedID(nm, dottedPath)
+		if !ok {
+			continue
+		}
+		num, _, perr := big.ParseFloat(idStr, 10, 256, big.ToNearestEven)
+		if perr != nil {
+			// Non-numeric id: take the first match deterministically.
+			if !haveBest {
+				best, bestID, haveBest = nm, idStr, true
+			}
+			continue
+		}
+		if !haveBest || bestNum == nil || num.Cmp(bestNum) > 0 {
+			best, bestID, bestNum, haveBest = nm, idStr, num, true
+		}
+	}
+	if !haveBest {
+		return nil, "", nil
+	}
+	return best, bestID, nil
+}
+
+// wrapSingleton wraps a singleton's unwrapped GET body under wrapKey so it matches
+// the request-derived resource schema (e.g. the data-standards GET returns the
+// DataStandards root directly, but the schema -- built from the POST request --
+// nests it under `data_standards`). When wrapKey is empty, or the body is already
+// shaped with that single key, the body is returned unchanged.
+func wrapSingleton(body map[string]any, wrapKey string) map[string]any {
+	if wrapKey == "" {
+		return body
+	}
+	if _, ok := body[wrapKey]; ok && len(body) == 1 {
+		return body
+	}
+	return map[string]any{wrapKey: body}
+}
+
+// jsonNumberOrString renders an id for an outbound JSON body: a numeric-looking id
+// is emitted as a json.Number (so the wire carries a JSON number, which the
+// Mixpanel filter-id APIs expect), otherwise it is sent verbatim as a string.
+func jsonNumberOrString(id string) any {
+	if id == "" {
+		return id
+	}
+	if _, _, err := big.ParseFloat(id, 10, 256, big.ToNearestEven); err == nil {
+		return json.Number(id)
+	}
+	return id
+}
+
+// flatCreateID extracts a server-assigned id from a create response whose body
+// does NOT match the read schema. The (optionally enveloped) body may be either a
+// single flat object {id,...} or a single-element list [{id,...}]; in both cases
+// the id is read from the first object at dottedPath (default "id"). Returns the
+// id as a string, or "" when none is present. Used by read_after_create entities
+// (e.g. event_definition) where the POST returns a flat id-bearing object/list.
+func flatCreateID(respBody []byte, enveloped bool, dottedPath string) (string, error) {
+	body := respBody
+	if enveloped {
+		inner, err := client.UnwrapEnvelope(respBody)
+		if err != nil {
+			return "", err
+		}
+		body = inner
+	}
+	if len(body) == 0 {
+		return "", nil
+	}
+	// Try a JSON object first.
+	var m map[string]any
+	dec := json.NewDecoder(strings.NewReader(string(body)))
+	dec.UseNumber()
+	if err := dec.Decode(&m); err == nil {
+		nm := normalizeNumbers(m).(map[string]any)
+		if got, ok := nestedID(nm, dottedPath); ok {
+			return got, nil
+		}
+		return "", nil
+	}
+	// Fall back to a JSON array; use the first object element.
+	var arr []any
+	dec = json.NewDecoder(strings.NewReader(string(body)))
+	dec.UseNumber()
+	if err := dec.Decode(&arr); err != nil {
+		return "", nil
+	}
+	for _, e := range arr {
+		em, ok := e.(map[string]any)
+		if !ok {
+			continue
+		}
+		nm := normalizeNumbers(em).(map[string]any)
+		if got, ok := nestedID(nm, dottedPath); ok {
+			return got, nil
+		}
+	}
+	return "", nil
+}
+
 // normalizeNumbers converts json.Number values produced by UseNumber back to
 // float64 so the generic tftypes bridge sees a uniform numeric type.
 func normalizeNumbers(v any) any {
