@@ -36,6 +36,11 @@ archives:
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
+  # The Terraform Registry requires the manifest's checksum to be in SHA256SUMS
+  # (and thus covered by the signature), alongside the zips.
+  extra_files:
+    - glob: "terraform-registry-manifest.json"
+      name_template: "{{ .ProjectName }}_{{ .Version }}_manifest.json"
   name_template: "{{ .ProjectName }}_{{ .Version }}_SHA256SUMS"
   algorithm: sha256
 
@@ -52,6 +57,11 @@ signs:
       - "${artifact}"
 
 release:
+  # Upload the registry manifest as a release asset (declares protocol v6;
+  # without it the registry assumes protocol 5.0).
+  extra_files:
+    - glob: "terraform-registry-manifest.json"
+      name_template: "{{ .ProjectName }}_{{ .Version }}_manifest.json"
   # The Terraform Registry ingests published (non-draft) releases.
   draft: false
   # Mark -alpha/-beta/-rc tags as GitHub pre-releases automatically.
