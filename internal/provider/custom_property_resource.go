@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
@@ -48,6 +47,7 @@ func (r *CustomPropertyResource) Schema(ctx context.Context, req resource.Schema
 	s.Attributes["behavior"] = schema.StringAttribute{Optional: true, Computed: true}
 	s.Attributes["composed_properties"] = schema.StringAttribute{Optional: true, Computed: true}
 	s.Attributes["display_options"] = schema.StringAttribute{Optional: true, Computed: true}
+	stabilizeComputed(s.Attributes)
 	resp.Schema = s
 }
 
@@ -196,7 +196,16 @@ func (r *CustomPropertyResource) Delete(ctx context.Context, req resource.Delete
 }
 
 func (r *CustomPropertyResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("custom_property_id"), req, resp)
+	parts := strings.SplitN(req.ID, ":", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		resp.Diagnostics.AddError(
+			"Invalid import ID",
+			fmt.Sprintf("expected import ID in the form \"project_id:<id>\", got %q", req.ID),
+		)
+		return
+	}
+	setImportID(ctx, &resp.State, &resp.Diagnostics, "project_id", parts[0], "int64")
+	setImportID(ctx, &resp.State, &resp.Diagnostics, "custom_property_id", parts[1], "int64")
 }
 
 // writeCustomPropertyState turns an unwrapped API body into resource state. base is the

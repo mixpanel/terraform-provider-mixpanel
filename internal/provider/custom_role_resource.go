@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
@@ -45,7 +44,7 @@ func (r *CustomRoleResource) Metadata(ctx context.Context, req resource.Metadata
 
 func (r *CustomRoleResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	s := rsc.CustomRoleResourceSchema(ctx)
-
+	stabilizeComputed(s.Attributes)
 	resp.Schema = s
 }
 
@@ -194,7 +193,16 @@ func (r *CustomRoleResource) Delete(ctx context.Context, req resource.DeleteRequ
 }
 
 func (r *CustomRoleResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("role_id"), req, resp)
+	parts := strings.SplitN(req.ID, ":", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		resp.Diagnostics.AddError(
+			"Invalid import ID",
+			fmt.Sprintf("expected import ID in the form \"project_id:<id>\", got %q", req.ID),
+		)
+		return
+	}
+	setImportID(ctx, &resp.State, &resp.Diagnostics, "project_id", parts[0], "int64")
+	setImportID(ctx, &resp.State, &resp.Diagnostics, "role_id", parts[1], "string")
 }
 
 // writeCustomRoleState turns an unwrapped API body into resource state. base is the

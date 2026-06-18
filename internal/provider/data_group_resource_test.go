@@ -36,6 +36,15 @@ resource "mixpanel_data_group" "test" {
 					},
 				},
 			},
+			{
+				// Import the resource and assert state round-trips through Read.
+				ResourceName:                         "mixpanel_data_group.test",
+				ImportState:                          true,
+				ImportStateVerify:                    true,
+				ImportStateVerifyIdentifierAttribute: "data_group_id",
+				ImportStateIdFunc:                    importIDFunc("mixpanel_data_group.test", "data_group_id", "project_id"),
+				ImportStateVerifyIgnore:              []string{"created_at", "is_ready", "ready_at", "type"},
+			},
 		},
 	})
 }

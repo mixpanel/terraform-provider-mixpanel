@@ -21,6 +21,15 @@ resource "mixpanel_annotation" "test" {
 
 }`),
 			},
+			{
+				// Import the resource and assert state round-trips through Read.
+				ResourceName:                         "mixpanel_annotation.test",
+				ImportState:                          true,
+				ImportStateVerify:                    true,
+				ImportStateVerifyIdentifierAttribute: "id",
+				ImportStateIdFunc:                    importIDFunc("mixpanel_annotation.test", "id", "project_id"),
+				ImportStateVerifyIgnore:              []string{"user"},
+			},
 		},
 	})
 }

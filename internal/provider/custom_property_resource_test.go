@@ -21,6 +21,15 @@ resource "mixpanel_custom_property" "test" {
 
 }`),
 			},
+			{
+				// Import the resource and assert state round-trips through Read.
+				ResourceName:                         "mixpanel_custom_property.test",
+				ImportState:                          true,
+				ImportStateVerify:                    true,
+				ImportStateVerifyIdentifierAttribute: "custom_property_id",
+				ImportStateIdFunc:                    importIDFunc("mixpanel_custom_property.test", "custom_property_id", "project_id"),
+				ImportStateVerifyIgnore:              []string{"behavior", "can_update_basic", "composed_properties", "created", "display_options", "is_session_scoped", "join_property_type", "mapped_data_group_id", "modified", "project", "property_type", "referenced_by", "referenced_directly_by", "referenced_raw_event_properties", "references_borrowed_property", "user"},
+			},
 		},
 	})
 }

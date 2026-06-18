@@ -21,6 +21,15 @@ resource "mixpanel_rollup_project" "test" {
 
 }`),
 			},
+			{
+				// Import the resource and assert state round-trips through Read.
+				ResourceName:                         "mixpanel_rollup_project.test",
+				ImportState:                          true,
+				ImportStateVerify:                    true,
+				ImportStateVerifyIdentifierAttribute: "rollup_project_id",
+				ImportStateIdFunc:                    importIDFunc("mixpanel_rollup_project.test", "rollup_project_id", ""),
+				ImportStateVerifyIgnore:              []string{"datasets", "rollup_projects"},
+			},
 		},
 	})
 }

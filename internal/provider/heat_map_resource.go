@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
@@ -49,6 +48,7 @@ func (r *HeatMapResource) Schema(ctx context.Context, req resource.SchemaRequest
 	s.Attributes["goal_weight"] = schema.StringAttribute{Optional: true, Computed: true}
 	s.Attributes["time_filter"] = schema.StringAttribute{Optional: true, Computed: true}
 	s.Attributes["filters"] = schema.StringAttribute{Optional: true, Computed: true}
+	stabilizeComputed(s.Attributes)
 	resp.Schema = s
 }
 
@@ -197,7 +197,16 @@ func (r *HeatMapResource) Delete(ctx context.Context, req resource.DeleteRequest
 }
 
 func (r *HeatMapResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+	parts := strings.SplitN(req.ID, ":", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		resp.Diagnostics.AddError(
+			"Invalid import ID",
+			fmt.Sprintf("expected import ID in the form \"project_id:<id>\", got %q", req.ID),
+		)
+		return
+	}
+	setImportID(ctx, &resp.State, &resp.Diagnostics, "project_id", parts[0], "int64")
+	setImportID(ctx, &resp.State, &resp.Diagnostics, "id", parts[1], "string")
 }
 
 // writeHeatMapState turns an unwrapped API body into resource state. base is the
@@ -211,6 +220,7 @@ func (r *HeatMapResource) writeHeatMapState(ctx context.Context, state *tfsdk.St
 	if projectID != "" {
 		extras["project_id"] = projectID
 	}
+	extras["heat_map_id"] = id
 	schemaType := state.Schema.Type().TerraformType(ctx)
 	val, err := client.RawFromWireMerged(schemaType, base, wire, extras, HeatMapAttrSpec())
 	if err != nil {

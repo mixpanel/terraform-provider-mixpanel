@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
@@ -46,6 +45,7 @@ func (r *DatasetResource) Metadata(ctx context.Context, req resource.MetadataReq
 func (r *DatasetResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	s := rsc.DatasetResourceSchema(ctx)
 	s.Attributes["dataset_id"] = schema.StringAttribute{Optional: true, Computed: true}
+	stabilizeComputed(s.Attributes)
 	resp.Schema = s
 }
 
@@ -207,7 +207,16 @@ func (r *DatasetResource) Delete(ctx context.Context, req resource.DeleteRequest
 }
 
 func (r *DatasetResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("dataset_id"), req, resp)
+	parts := strings.SplitN(req.ID, ":", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		resp.Diagnostics.AddError(
+			"Invalid import ID",
+			fmt.Sprintf("expected import ID in the form \"project_id:<id>\", got %q", req.ID),
+		)
+		return
+	}
+	setImportID(ctx, &resp.State, &resp.Diagnostics, "project_id", parts[0], "int64")
+	setImportID(ctx, &resp.State, &resp.Diagnostics, "dataset_id", parts[1], "string")
 }
 
 // writeDatasetState turns an unwrapped API body into resource state. base is the

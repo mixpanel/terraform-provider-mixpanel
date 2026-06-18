@@ -21,6 +21,15 @@ resource "mixpanel_dashboard" "test" {
 
 }`),
 			},
+			{
+				// Import the resource and assert state round-trips through Read.
+				ResourceName:                         "mixpanel_dashboard.test",
+				ImportState:                          true,
+				ImportStateVerify:                    true,
+				ImportStateVerifyIdentifierAttribute: "id",
+				ImportStateIdFunc:                    importIDFunc("mixpanel_dashboard.test", "id", "project_id"),
+				ImportStateVerifyIgnore:              []string{"created", "creator", "creator_email", "creator_id", "creator_name", "is_favorited", "layout_version", "modified", "pinned_date", "template_type", "total_view_count", "unique_view_count"},
+			},
 		},
 	})
 }

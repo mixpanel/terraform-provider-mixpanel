@@ -21,6 +21,15 @@ resource "mixpanel_bookmark" "test" {
 
 }`),
 			},
+			{
+				// Import the resource and assert state round-trips through Read.
+				ResourceName:                         "mixpanel_bookmark.test",
+				ImportState:                          true,
+				ImportStateVerify:                    true,
+				ImportStateVerifyIdentifierAttribute: "id",
+				ImportStateIdFunc:                    importIDFunc("mixpanel_bookmark.test", "id", "project_id"),
+				ImportStateVerifyIgnore:              []string{"allow_staff_override", "can_share", "can_update_basic", "can_view", "created", "creator", "creator_email", "creator_id", "creator_name", "generation_type", "include_in_dashboard", "is_default", "is_superadmin", "last_modified_by_email", "last_modified_by_id", "last_modified_by_name", "metadata", "modified", "original_type", "params", "total_view_count", "unique_view_count", "workspace_id"},
+			},
 		},
 	})
 }

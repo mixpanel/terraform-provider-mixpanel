@@ -36,6 +36,15 @@ resource "mixpanel_webhook" "test" {
 					},
 				},
 			},
+			{
+				// Import the resource and assert state round-trips through Read.
+				ResourceName:                         "mixpanel_webhook.test",
+				ImportState:                          true,
+				ImportStateVerify:                    true,
+				ImportStateVerifyIdentifierAttribute: "id",
+				ImportStateIdFunc:                    importIDFunc("mixpanel_webhook.test", "id", "project_id"),
+				ImportStateVerifyIgnore:              []string{"created", "creator_id", "creator_name", "is_enabled", "modified"},
+			},
 		},
 	})
 }

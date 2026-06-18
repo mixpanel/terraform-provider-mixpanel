@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
@@ -48,6 +47,7 @@ func (r *ConnectorResource) Schema(ctx context.Context, req resource.SchemaReque
 	s.Attributes["category_properties"] = schema.StringAttribute{Optional: true, Computed: true}
 	s.Attributes["connector_properties"] = schema.StringAttribute{Optional: true, Computed: true}
 	requireReplace(s.Attributes, "connector_type", "label", "project_id")
+	stabilizeComputed(s.Attributes)
 	resp.Schema = s
 }
 
@@ -180,7 +180,16 @@ func (r *ConnectorResource) Delete(ctx context.Context, req resource.DeleteReque
 }
 
 func (r *ConnectorResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("connector_id"), req, resp)
+	parts := strings.SplitN(req.ID, ":", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		resp.Diagnostics.AddError(
+			"Invalid import ID",
+			fmt.Sprintf("expected import ID in the form \"project_id:<id>\", got %q", req.ID),
+		)
+		return
+	}
+	setImportID(ctx, &resp.State, &resp.Diagnostics, "project_id", parts[0], "int64")
+	setImportID(ctx, &resp.State, &resp.Diagnostics, "connector_id", parts[1], "string")
 }
 
 // writeConnectorState turns an unwrapped API body into resource state. base is the

@@ -38,6 +38,15 @@ resource "mixpanel_workspace" "test" {
 					},
 				},
 			},
+			{
+				// Import the resource and assert state round-trips through Read.
+				ResourceName:                         "mixpanel_workspace.test",
+				ImportState:                          true,
+				ImportStateVerify:                    true,
+				ImportStateVerifyIdentifierAttribute: "id",
+				ImportStateIdFunc:                    importIDFunc("mixpanel_workspace.test", "id", "project_id"),
+				ImportStateVerifyIgnore:              []string{"created_iso", "creator_id", "creator_name", "data_filters", "has_all_org_members", "is_default", "is_global", "member_list", "membership_approval_required", "onboarding_dashboard_id", "requesting_user_orgs", "requesting_user_teams", "team_list", "unified_member_list"},
+			},
 		},
 	})
 }

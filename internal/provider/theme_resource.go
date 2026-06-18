@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
@@ -46,6 +45,7 @@ func (r *ThemeResource) Metadata(ctx context.Context, req resource.MetadataReque
 func (r *ThemeResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	s := rsc.ThemeResourceSchema(ctx)
 	s.Attributes["data"] = schema.StringAttribute{Optional: true, Computed: true}
+	stabilizeComputed(s.Attributes)
 	resp.Schema = s
 }
 
@@ -194,7 +194,16 @@ func (r *ThemeResource) Delete(ctx context.Context, req resource.DeleteRequest, 
 }
 
 func (r *ThemeResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("theme_id"), req, resp)
+	parts := strings.SplitN(req.ID, ":", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		resp.Diagnostics.AddError(
+			"Invalid import ID",
+			fmt.Sprintf("expected import ID in the form \"project_id:<id>\", got %q", req.ID),
+		)
+		return
+	}
+	setImportID(ctx, &resp.State, &resp.Diagnostics, "project_id", parts[0], "int64")
+	setImportID(ctx, &resp.State, &resp.Diagnostics, "theme_id", parts[1], "int64")
 }
 
 // writeThemeState turns an unwrapped API body into resource state. base is the

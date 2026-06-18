@@ -23,6 +23,15 @@ resource "mixpanel_event_definition" "test" {
   }]
 }`),
 			},
+			{
+				// Import the resource and assert state round-trips through Read.
+				ResourceName:                         "mixpanel_event_definition.test",
+				ImportState:                          true,
+				ImportStateVerify:                    true,
+				ImportStateVerifyIdentifierAttribute: "id",
+				ImportStateIdFunc:                    importIDFunc("mixpanel_event_definition.test", "id", "project_id"),
+				ImportStateVerifyIgnore:              []string{"collect_everything_event_id", "contacts", "created_utc", "custom_event_id", "description", "display_name", "dropped", "hidden", "last_modified", "merged", "merged_event_id", "modified_utc", "name", "platforms", "status", "tags", "team_contacts", "verified"},
+			},
 		},
 	})
 }

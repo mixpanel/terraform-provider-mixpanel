@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
@@ -49,6 +48,7 @@ func (r *ExperimentResource) Schema(ctx context.Context, req resource.SchemaRequ
 	s.Attributes["feature_flag"] = schema.StringAttribute{Optional: true, Computed: true}
 	s.Attributes["results_cache"] = schema.StringAttribute{Optional: true, Computed: true}
 	s.Attributes["settings"] = schema.StringAttribute{Optional: true, Computed: true}
+	stabilizeComputed(s.Attributes)
 	resp.Schema = s
 }
 
@@ -197,7 +197,16 @@ func (r *ExperimentResource) Delete(ctx context.Context, req resource.DeleteRequ
 }
 
 func (r *ExperimentResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+	parts := strings.SplitN(req.ID, ":", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		resp.Diagnostics.AddError(
+			"Invalid import ID",
+			fmt.Sprintf("expected import ID in the form \"project_id:<id>\", got %q", req.ID),
+		)
+		return
+	}
+	setImportID(ctx, &resp.State, &resp.Diagnostics, "project_id", parts[0], "int64")
+	setImportID(ctx, &resp.State, &resp.Diagnostics, "id", parts[1], "string")
 }
 
 // writeExperimentState turns an unwrapped API body into resource state. base is the
@@ -211,6 +220,7 @@ func (r *ExperimentResource) writeExperimentState(ctx context.Context, state *tf
 	if projectID != "" {
 		extras["project_id"] = projectID
 	}
+	extras["experiment_id"] = id
 	schemaType := state.Schema.Type().TerraformType(ctx)
 	val, err := client.RawFromWireMerged(schemaType, base, wire, extras, ExperimentAttrSpec())
 	if err != nil {

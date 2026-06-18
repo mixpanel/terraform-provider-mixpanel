@@ -34,6 +34,15 @@ resource "mixpanel_experiment" "test" {
 					},
 				},
 			},
+			{
+				// Import the resource and assert state round-trips through Read.
+				ResourceName:                         "mixpanel_experiment.test",
+				ImportState:                          true,
+				ImportStateVerify:                    true,
+				ImportStateVerifyIdentifierAttribute: "id",
+				ImportStateIdFunc:                    importIDFunc("mixpanel_experiment.test", "id", "project_id"),
+				ImportStateVerifyIgnore:              []string{"allow_staff_override", "can_pin", "can_share", "can_update_basic", "can_view", "content_environments_id", "content_type", "created", "creator_email", "creator_id", "creator_name", "deleted", "end_date", "exposures_cache", "feature_flag", "feature_flag_content_env_id", "is_favorited", "is_shared_with_project", "is_superadmin", "last_modified_by_email", "last_modified_by_id", "last_modified_by_name", "modified", "pinned_date", "project_name", "results_cache", "settings", "start_date", "status"},
+			},
 		},
 	})
 }

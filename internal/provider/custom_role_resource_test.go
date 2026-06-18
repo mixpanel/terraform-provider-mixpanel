@@ -36,6 +36,15 @@ resource "mixpanel_custom_role" "test" {
 					},
 				},
 			},
+			{
+				// Import the resource and assert state round-trips through Read.
+				ResourceName:                         "mixpanel_custom_role.test",
+				ImportState:                          true,
+				ImportStateVerify:                    true,
+				ImportStateVerifyIdentifierAttribute: "role_id",
+				ImportStateIdFunc:                    importIDFunc("mixpanel_custom_role.test", "role_id", "project_id"),
+				ImportStateVerifyIgnore:              []string{"created", "created_by_user_id", "is_default", "modified"},
+			},
 		},
 	})
 }

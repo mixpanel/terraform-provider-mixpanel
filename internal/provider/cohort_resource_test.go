@@ -21,6 +21,15 @@ resource "mixpanel_cohort" "test" {
 
 }`),
 			},
+			{
+				// Import the resource and assert state round-trips through Read.
+				ResourceName:                         "mixpanel_cohort.test",
+				ImportState:                          true,
+				ImportStateVerify:                    true,
+				ImportStateVerifyIdentifierAttribute: "id",
+				ImportStateIdFunc:                    importIDFunc("mixpanel_cohort.test", "id", "project_id"),
+				ImportStateVerifyIgnore:              []string{"groups"},
+			},
 		},
 	})
 }
