@@ -62,46 +62,23 @@ type AttrSpec struct {
 }
 
 // wireKey returns the JSON wire key for a schema attribute name. An explicit
-// JSONEncodeWireKey alias always wins; otherwise the snake_case Terraform
-// attribute name is converted to its camelCase wire form. Terraform requires
-// attribute names to be snake_case, but the Mixpanel API wire keys are camelCase
-// (e.g. the TF attr "resource_type" maps to wire key "resourceType",
-// "display_formula" -> "displayFormula"). Without this conversion, scalar attrs
-// are sent/read under their snake_case name and the API silently drops them
-// (e.g. 400 "Missing required parameter: resourceType").
+// JSONEncodeWireKey alias always wins; otherwise the attribute name is used
+// verbatim. Terraform requires attribute names to be snake_case, and the great
+// majority of Mixpanel API wire keys are already snake_case, so the verbatim
+// name is correct by default. The generator records the exact wire key for
+// every attribute whose API name is NOT its snake_case form (e.g. the TF attr
+// "composed_properties" maps to wire key "composedProperties") in
+// JSONEncodeWireKey, so genuinely camelCase fields are handled explicitly
+// rather than by guessing. (A previous blanket snake->camel conversion here
+// wrongly mangled snake_case API fields such as "sort_property" into
+// "sortProperty", which APIs with additionalProperties:false then rejected.)
 func (s AttrSpec) wireKey(name string) string {
 	if s.JSONEncodeWireKey != nil {
 		if wk, ok := s.JSONEncodeWireKey[name]; ok {
 			return wk
 		}
 	}
-	return snakeToCamel(name)
-}
-
-// snakeToCamel converts a snake_case identifier to lowerCamelCase. It is the
-// deterministic inverse of the snake_case-ing tfplugingen applies to API field
-// names: "resource_type" -> "resourceType", "data_group_id" -> "dataGroupId",
-// "name" -> "name". A leading underscore or a name without underscores is
-// returned unchanged.
-func snakeToCamel(name string) string {
-	if name == "" || name[0] == '_' {
-		return name
-	}
-	var b []byte
-	upper := false
-	for i := 0; i < len(name); i++ {
-		c := name[i]
-		if c == '_' {
-			upper = true
-			continue
-		}
-		if upper && c >= 'a' && c <= 'z' {
-			c -= 'a' - 'A'
-		}
-		upper = false
-		b = append(b, c)
-	}
-	return string(b)
+	return name
 }
 
 // WireFromRaw converts a Plan/State raw object value into a plain Go map ready
