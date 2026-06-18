@@ -523,3 +523,45 @@ func setImportID(ctx context.Context, state *tfsdk.State, diags *diag.Diagnostic
 		diags.Append(state.SetAttribute(ctx, path.Root(attr), raw)...)
 	}
 }
+
+// rpcAssocKeyPresent reports whether key appears anywhere in the (untyped) JSON
+// body of an RPC-association list response. The org RBAC list endpoints
+// (organizations/{organization_id}/teams, .../users, ...) return open
+// (additionalProperties) shapes with no guaranteed column layout, so existence is
+// confirmed permissively: key matches a "name"/"id"/"email" field value, a map
+// key, or any scalar leaf equal to key. Used by every rpc_assoc resource's Read.
+func rpcAssocKeyPresent(body []byte, key string) bool {
+	if key == "" {
+		return false
+	}
+	var decoded any
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		// Undecodable body: fall back to a literal substring scan so a present
+		// association is not spuriously removed from state.
+		return strings.Contains(string(body), key)
+	}
+	return rpcAssocWalk(decoded, key)
+}
+
+func rpcAssocWalk(node any, key string) bool {
+	switch v := node.(type) {
+	case map[string]any:
+		for k, val := range v {
+			if k == key {
+				return true
+			}
+			if rpcAssocWalk(val, key) {
+				return true
+			}
+		}
+	case []any:
+		for _, e := range v {
+			if rpcAssocWalk(e, key) {
+				return true
+			}
+		}
+	case string:
+		return v == key
+	}
+	return false
+}

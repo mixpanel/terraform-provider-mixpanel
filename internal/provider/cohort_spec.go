@@ -16,5 +16,6 @@ func CohortAttrSpec() client.AttrSpec {
 		JSONStringAttrs:   map[string]bool{},
 		JSONEncodeWireKey: map[string]string{"data_group_id": "data_group_id", "is_locked": "is_locked", "is_visible": "is_visible"},
 		OutputOnlyAttrs:   map[string]bool{},
+		SpreadAttrs:       map[string]bool{},
 	}
 }

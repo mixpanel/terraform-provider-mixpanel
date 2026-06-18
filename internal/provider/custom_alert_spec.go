@@ -16,5 +16,6 @@ func CustomAlertAttrSpec() client.AttrSpec {
 		JSONStringAttrs:   map[string]bool{},
 		JSONEncodeWireKey: map[string]string{"bookmark_id": "bookmark_id", "notification_windows": "notification_windows"},
 		OutputOnlyAttrs:   map[string]bool{},
+		SpreadAttrs:       map[string]bool{},
 	}
 }

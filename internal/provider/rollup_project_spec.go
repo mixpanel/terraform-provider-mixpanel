@@ -16,5 +16,6 @@ func RollupProjectAttrSpec() client.AttrSpec {
 		JSONStringAttrs:   map[string]bool{},
 		JSONEncodeWireKey: map[string]string{},
 		OutputOnlyAttrs:   map[string]bool{"datasets": true, "rollup_projects": true},
+		SpreadAttrs:       map[string]bool{},
 	}
 }

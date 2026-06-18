@@ -16,5 +16,6 @@ func CustomEventAttrSpec() client.AttrSpec {
 		JSONStringAttrs:   map[string]bool{},
 		JSONEncodeWireKey: map[string]string{"custom_event": "custom_event"},
 		OutputOnlyAttrs:   map[string]bool{"custom_event": true},
+		SpreadAttrs:       map[string]bool{},
 	}
 }

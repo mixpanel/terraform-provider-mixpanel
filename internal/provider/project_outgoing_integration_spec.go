@@ -16,5 +16,6 @@ func ProjectOutgoingIntegrationAttrSpec() client.AttrSpec {
 		JSONStringAttrs:   map[string]bool{},
 		JSONEncodeWireKey: map[string]string{"connector_name": "connector_name", "integration_id": "integration_id"},
 		OutputOnlyAttrs:   map[string]bool{"cohorts": true, "connector_name": true, "created_at": true, "created_by": true, "failure_message": true, "integration_id": true, "is_enabled": true, "modified_at": true, "name": true, "status": true, "workflow_state": true},
+		SpreadAttrs:       map[string]bool{},
 	}
 }

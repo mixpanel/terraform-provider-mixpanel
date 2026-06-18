@@ -59,6 +59,22 @@ type AttrSpec struct {
 	// they would be serialized into the POST/PATCH body and rejected by APIs
 	// that disallow additional properties. WireFromRaw strips them.
 	OutputOnlyAttrs map[string]bool
+
+	// SpreadAttrs are jsonencode attributes (also listed in JSONEncodeAttrs)
+	// whose decoded JSON OBJECT is spread (merged) into the TOP LEVEL of the
+	// request body rather than nested under the attribute's wire key. This models
+	// a polymorphic create/update body that the HashiCorp generator cannot
+	// express: the body is a discriminated `oneOf` of N variant schemas (e.g. a
+	// warehouse source's bigquery/snowflake/redshift/databricks/postgres
+	// connection config). We collapse all variant-specific fields into one
+	// jsonencode string attribute (e.g. "params") and spread its contents back to
+	// the body root on the wire, so a user writes the variant fields as
+	// jsonencode({...}) and they land flat where the API expects them. The
+	// decoded value MUST be a JSON object; a non-object spread value is an error.
+	// Spread attributes are never echoed back verbatim by the read GET (the read
+	// schema is the flat response), so they are preserved from prior plan/state by
+	// the merge-base read path like any other jsonencode passthrough.
+	SpreadAttrs map[string]bool
 }
 
 // wireKey returns the JSON wire key for a schema attribute name. An explicit
@@ -131,6 +147,18 @@ func WireFromRaw(raw tftypes.Value, spec AttrSpec) (map[string]any, error) {
 			var decoded any
 			if err := json.Unmarshal([]byte(s), &decoded); err != nil {
 				return nil, fmt.Errorf("parsing jsonencode attr %q: %w", name, err)
+			}
+			if spec.SpreadAttrs[name] {
+				// Spread the decoded object into the body root (polymorphic
+				// oneOf body collapsed to one jsonencode attr). Must be an object.
+				obj, ok := decoded.(map[string]any)
+				if !ok {
+					return nil, fmt.Errorf("spread attr %q must be a JSON object, got %T", name, decoded)
+				}
+				for k, val := range obj {
+					out[k] = val
+				}
+				continue
 			}
 			out[spec.wireKey(name)] = decoded
 			continue

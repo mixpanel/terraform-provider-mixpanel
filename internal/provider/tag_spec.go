@@ -16,5 +16,6 @@ func TagAttrSpec() client.AttrSpec {
 		JSONStringAttrs:   map[string]bool{},
 		JSONEncodeWireKey: map[string]string{},
 		OutputOnlyAttrs:   map[string]bool{"name": true},
+		SpreadAttrs:       map[string]bool{},
 	}
 }

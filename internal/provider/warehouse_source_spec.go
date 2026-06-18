@@ -12,9 +12,10 @@ func WarehouseSourceAttrSpec() client.AttrSpec {
 		IDAttr:            "id",
 		ProjectIDAttr:     "project_id",
 		PathParamAttrs:    map[string]bool{"source_id": true},
-		JSONEncodeAttrs:   map[string]bool{},
+		JSONEncodeAttrs:   map[string]bool{"params": true},
 		JSONStringAttrs:   map[string]bool{},
 		JSONEncodeWireKey: map[string]string{"account_name": "account_name", "creator_email": "creator_email", "creator_id": "creator_id", "creator_name": "creator_name", "public_key": "public_key", "source_name": "source_name", "storage_integration": "storage_integration", "stream_database": "stream_database", "stream_schema": "stream_schema", "user_name": "user_name", "warehouse_type": "warehouse_type"},
-		OutputOnlyAttrs:   map[string]bool{"created": true, "creator_email": true, "creator_id": true, "creator_name": true, "source_name": true, "warehouse_type": true},
+		OutputOnlyAttrs:   map[string]bool{"created": true, "creator_email": true, "creator_id": true, "creator_name": true},
+		SpreadAttrs:       map[string]bool{"params": true},
 	}
 }

@@ -39,7 +39,7 @@ func (d *WarehouseSourceDataSource) Metadata(ctx context.Context, req datasource
 
 func (d *WarehouseSourceDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	s := dsc.WarehouseSourceDataSourceSchema(ctx)
-
+	s.Attributes["params"] = dschema.StringAttribute{Optional: true, Computed: true}
 	resp.Schema = s
 }
 

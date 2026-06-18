@@ -16,5 +16,6 @@ func CustomRoleAttrSpec() client.AttrSpec {
 		JSONStringAttrs:   map[string]bool{},
 		JSONEncodeWireKey: map[string]string{"copied_from_role_id": "copied_from_role_id", "created_by_user_id": "created_by_user_id", "is_default": "is_default", "project_id": "project_id", "role_id": "role_id"},
 		OutputOnlyAttrs:   map[string]bool{"created": true, "created_by_user_id": true, "is_default": true, "modified": true},
+		SpreadAttrs:       map[string]bool{},
 	}
 }

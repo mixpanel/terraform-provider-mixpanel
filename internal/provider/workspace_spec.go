@@ -16,5 +16,6 @@ func WorkspaceAttrSpec() client.AttrSpec {
 		JSONStringAttrs:   map[string]bool{},
 		JSONEncodeWireKey: map[string]string{"created_iso": "created_iso", "creator_id": "creator_id", "creator_name": "creator_name", "data_filters": "data_filters", "has_all_org_members": "has_all_org_members", "is_default": "is_default", "is_global": "is_global", "is_restricted": "is_restricted", "is_visible": "is_visible", "member_list": "member_list", "membership_approval_required": "membership_approval_required", "onboarding_dashboard_id": "onboarding_dashboard_id", "project_id": "project_id", "requesting_user_orgs": "requesting_user_orgs", "requesting_user_teams": "requesting_user_teams", "team_list": "team_list", "unified_member_list": "unified_member_list"},
 		OutputOnlyAttrs:   map[string]bool{"created_iso": true, "creator_id": true, "creator_name": true, "has_all_org_members": true, "is_default": true, "is_global": true, "member_list": true, "membership_approval_required": true, "onboarding_dashboard_id": true, "requesting_user_orgs": true, "requesting_user_teams": true, "team_list": true, "unified_member_list": true},
+		SpreadAttrs:       map[string]bool{},
 	}
 }
