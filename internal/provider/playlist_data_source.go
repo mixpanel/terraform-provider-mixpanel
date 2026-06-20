@@ -65,7 +65,7 @@ func (d *PlaylistDataSource) Read(ctx context.Context, req datasource.ReadReques
 	if pid, perr := stringAttrFromRaw(req.Config.Raw, "project_id"); perr == nil && pid != "" {
 		projectID = d.client.ProjectID(pid)
 	}
-	id, err := stringAttrFromRaw(req.Config.Raw, "id")
+	id, err := stringAttrFromRaw(req.Config.Raw, "playlist_id")
 	if err != nil {
 		resp.Diagnostics.AddError("Reading playlist id", err.Error())
 		return
@@ -83,7 +83,7 @@ func (d *PlaylistDataSource) Read(ctx context.Context, req datasource.ReadReques
 	}
 	wire = unwrapResultsMap(wire, false)
 	extras := map[string]any{
-		"id": id,
+		"playlist_id": id,
 	}
 	if projectID != "" {
 		extras["project_id"] = projectID

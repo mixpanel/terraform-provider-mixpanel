@@ -81,6 +81,7 @@ func (d *TwofactorSettingsDataSource) Read(ctx context.Context, req datasource.R
 		return
 	}
 	wire = unwrapResultsMap(wire, false)
+	wire = wrapSingleton(wire, "settings")
 	extras := map[string]any{
 		"id": id,
 	}

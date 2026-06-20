@@ -64,7 +64,7 @@ func (d *AgentFlowDataSource) Read(ctx context.Context, req datasource.ReadReque
 	if pid, perr := stringAttrFromRaw(req.Config.Raw, "project_id"); perr == nil && pid != "" {
 		projectID = d.client.ProjectID(pid)
 	}
-	id, err := stringAttrFromRaw(req.Config.Raw, "id")
+	id, err := stringAttrFromRaw(req.Config.Raw, "agent_flow_id")
 	if err != nil {
 		resp.Diagnostics.AddError("Reading agent_flow id", err.Error())
 		return
@@ -82,7 +82,7 @@ func (d *AgentFlowDataSource) Read(ctx context.Context, req datasource.ReadReque
 	}
 	wire = unwrapResultsMap(wire, false)
 	extras := map[string]any{
-		"id": id,
+		"agent_flow_id": id,
 	}
 	if projectID != "" {
 		extras["project_id"] = projectID

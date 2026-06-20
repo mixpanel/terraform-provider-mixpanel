@@ -81,6 +81,7 @@ func (d *OrgSessionSettingsDataSource) Read(ctx context.Context, req datasource.
 		return
 	}
 	wire = unwrapResultsMap(wire, false)
+	wire = wrapSingleton(wire, "settings")
 	extras := map[string]any{
 		"id": id,
 	}

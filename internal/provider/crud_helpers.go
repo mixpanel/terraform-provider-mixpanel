@@ -536,9 +536,11 @@ func rpcAssocKeyPresent(body []byte, key string) bool {
 	}
 	var decoded any
 	if err := json.Unmarshal(body, &decoded); err != nil {
-		// Undecodable body: fall back to a literal substring scan so a present
-		// association is not spuriously removed from state.
-		return strings.Contains(string(body), key)
+		// Undecodable list body: we cannot confirm presence. A literal substring
+		// scan (the previous behavior) matches a key embedded in an unrelated value
+		// -- e.g. a short role name or an email that recurs elsewhere -- and so
+		// MASKS a real deletion. Report absent and let the next apply re-create.
+		return false
 	}
 	return rpcAssocWalk(decoded, key)
 }

@@ -113,7 +113,7 @@ func (r *UserProjectRoleResource) Read(ctx context.Context, req resource.ReadReq
 		return
 	}
 	org := r.orgID(&m)
-	listPath := strings.NewReplacer("{organization_id}", org).Replace("/organizations/{organization_id}/teams")
+	listPath := strings.NewReplacer("{organization_id}", org).Replace("/organizations/{organization_id}/users/")
 	respBody, err := r.client.Do(ctx, "GET", listPath, nil)
 	if err != nil {
 		if apiErr, ok := err.(*client.APIError); ok && apiErr.StatusCode == 404 {

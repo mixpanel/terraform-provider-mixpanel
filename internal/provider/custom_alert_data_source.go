@@ -65,7 +65,7 @@ func (d *CustomAlertDataSource) Read(ctx context.Context, req datasource.ReadReq
 	if pid, perr := stringAttrFromRaw(req.Config.Raw, "project_id"); perr == nil && pid != "" {
 		projectID = d.client.ProjectID(pid)
 	}
-	id, err := stringAttrFromRaw(req.Config.Raw, "id")
+	id, err := stringAttrFromRaw(req.Config.Raw, "custom_alert_id")
 	if err != nil {
 		resp.Diagnostics.AddError("Reading custom_alert id", err.Error())
 		return
@@ -83,7 +83,7 @@ func (d *CustomAlertDataSource) Read(ctx context.Context, req datasource.ReadReq
 	}
 	wire = unwrapResultsMap(wire, false)
 	extras := map[string]any{
-		"id": id,
+		"custom_alert_id": id,
 	}
 	if projectID != "" {
 		extras["project_id"] = projectID

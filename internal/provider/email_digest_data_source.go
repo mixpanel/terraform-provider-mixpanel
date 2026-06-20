@@ -64,7 +64,7 @@ func (d *EmailDigestDataSource) Read(ctx context.Context, req datasource.ReadReq
 	if pid, perr := stringAttrFromRaw(req.Config.Raw, "project_id"); perr == nil && pid != "" {
 		projectID = d.client.ProjectID(pid)
 	}
-	id, err := stringAttrFromRaw(req.Config.Raw, "id")
+	id, err := stringAttrFromRaw(req.Config.Raw, "email_digest_id")
 	if err != nil {
 		resp.Diagnostics.AddError("Reading email_digest id", err.Error())
 		return
@@ -82,7 +82,7 @@ func (d *EmailDigestDataSource) Read(ctx context.Context, req datasource.ReadReq
 	}
 	wire = unwrapResultsMap(wire, false)
 	extras := map[string]any{
-		"id": id,
+		"email_digest_id": id,
 	}
 	if projectID != "" {
 		extras["project_id"] = projectID

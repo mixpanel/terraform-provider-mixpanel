@@ -45,6 +45,7 @@ func (r *SparkSettingsResource) Metadata(ctx context.Context, req resource.Metad
 func (r *SparkSettingsResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	s := rsc.SparkSettingsResourceSchema(ctx)
 	s.Attributes["id"] = schema.StringAttribute{Computed: true}
+	requireReplace(s.Attributes, "organization_id")
 	stabilizeComputed(s.Attributes)
 	resp.Schema = s
 }
@@ -100,10 +101,14 @@ func (r *SparkSettingsResource) Create(ctx context.Context, req resource.CreateR
 	}
 	// The whole settings object lives under the single "settings" jsonencode attr;
 	// POST the inner object (the update endpoint takes the settings fields directly).
-	var body any = full["settings"]
-	if _, err := r.client.Do(ctx, "POST", r.updatePath(scopeID), body); err != nil {
-		resp.Diagnostics.AddError("Creating spark_settings", err.Error())
-		return
+	// settings is Optional+Computed: when the user omits it, full["settings"] is nil
+	// and there is nothing to write -- skip the POST (POSTing a null/empty body can
+	// error or silently clear the scope's settings) and just adopt the live values.
+	if body, ok := full["settings"]; ok && body != nil {
+		if _, err := r.client.Do(ctx, "POST", r.updatePath(scopeID), body); err != nil {
+			resp.Diagnostics.AddError("Creating spark_settings", err.Error())
+			return
+		}
 	}
 	getBody, err := r.client.Do(ctx, "GET", r.collectionPath(scopeID), nil)
 	if err != nil {
@@ -156,10 +161,14 @@ func (r *SparkSettingsResource) Update(ctx context.Context, req resource.UpdateR
 		resp.Diagnostics.AddError("Encoding spark_settings request", err.Error())
 		return
 	}
-	var body any = full["settings"]
-	if _, err := r.client.Do(ctx, "POST", r.updatePath(scopeID), body); err != nil {
-		resp.Diagnostics.AddError("Updating spark_settings", err.Error())
-		return
+	// settings is Optional+Computed: a nil body means "no change" -- skip the POST
+	// (a null/empty body can error or silently clear the scope's settings) and adopt
+	// the current live values via the read-back below.
+	if body, ok := full["settings"]; ok && body != nil {
+		if _, err := r.client.Do(ctx, "POST", r.updatePath(scopeID), body); err != nil {
+			resp.Diagnostics.AddError("Updating spark_settings", err.Error())
+			return
+		}
 	}
 	getBody, err := r.client.Do(ctx, "GET", r.collectionPath(scopeID), nil)
 	if err != nil {
@@ -191,7 +200,7 @@ func (r *SparkSettingsResource) ImportState(ctx context.Context, req resource.Im
 		)
 		return
 	}
-	setImportID(ctx, &resp.State, &resp.Diagnostics, "project_id", req.ID, "int64")
+	setImportID(ctx, &resp.State, &resp.Diagnostics, "organization_id", req.ID, "int64")
 	setImportID(ctx, &resp.State, &resp.Diagnostics, "id", req.ID, "string")
 }
 

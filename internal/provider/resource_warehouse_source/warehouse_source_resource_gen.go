@@ -28,7 +28,8 @@ func WarehouseSourceResourceSchema(ctx context.Context) schema.Schema {
 				Computed: true,
 			},
 			"params": schema.StringAttribute{
-				Required: true,
+				Optional: true,
+				Computed: true,
 			},
 			"project_id": schema.Int64Attribute{
 				Optional: true,

@@ -64,7 +64,7 @@ func (d *CohortDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 	if pid, perr := stringAttrFromRaw(req.Config.Raw, "project_id"); perr == nil && pid != "" {
 		projectID = d.client.ProjectID(pid)
 	}
-	id, err := stringAttrFromRaw(req.Config.Raw, "id")
+	id, err := stringAttrFromRaw(req.Config.Raw, "cohort_id")
 	if err != nil {
 		resp.Diagnostics.AddError("Reading cohort id", err.Error())
 		return
@@ -82,7 +82,7 @@ func (d *CohortDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 	}
 	wire = unwrapResultsMap(wire, false)
 	extras := map[string]any{
-		"id": id,
+		"cohort_id": id,
 	}
 	if projectID != "" {
 		extras["project_id"] = projectID

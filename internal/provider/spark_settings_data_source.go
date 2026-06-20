@@ -81,6 +81,7 @@ func (d *SparkSettingsDataSource) Read(ctx context.Context, req datasource.ReadR
 		return
 	}
 	wire = unwrapResultsMap(wire, false)
+	wire = wrapSingleton(wire, "settings")
 	extras := map[string]any{
 		"id": id,
 	}

@@ -64,7 +64,7 @@ func (d *WarehouseSourceDataSource) Read(ctx context.Context, req datasource.Rea
 	if pid, perr := stringAttrFromRaw(req.Config.Raw, "project_id"); perr == nil && pid != "" {
 		projectID = d.client.ProjectID(pid)
 	}
-	id, err := stringAttrFromRaw(req.Config.Raw, "id")
+	id, err := stringAttrFromRaw(req.Config.Raw, "source_id")
 	if err != nil {
 		resp.Diagnostics.AddError("Reading warehouse_source id", err.Error())
 		return
@@ -82,7 +82,7 @@ func (d *WarehouseSourceDataSource) Read(ctx context.Context, req datasource.Rea
 	}
 	wire = unwrapResultsMap(wire, false)
 	extras := map[string]any{
-		"id": id,
+		"source_id": id,
 	}
 	if projectID != "" {
 		extras["project_id"] = projectID

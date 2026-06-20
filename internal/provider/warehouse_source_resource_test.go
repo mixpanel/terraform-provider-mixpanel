@@ -19,7 +19,6 @@ func TestAccWarehouseSource_lifecycle(t *testing.T) {
 				// Create; the implicit post-apply refresh+plan asserts idempotency.
 				Config: providerConfig(srv.URL, `
 resource "mixpanel_warehouse_source" "test" {
-  params = "tf-acc-test"
   warehouse_type = "tf-acc-test"
 }`),
 			},
@@ -27,8 +26,7 @@ resource "mixpanel_warehouse_source" "test" {
 				// A changed attribute must plan as the expected action.
 				Config: providerConfig(srv.URL, `
 resource "mixpanel_warehouse_source" "test" {
-  params = "tf-acc-renamed"
-  warehouse_type = "tf-acc-test"
+  warehouse_type = "tf-acc-renamed"
 }`),
 				ConfigPlanChecks: resource.ConfigPlanChecks{
 					PreApply: []plancheck.PlanCheck{

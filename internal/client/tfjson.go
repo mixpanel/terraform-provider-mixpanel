@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"sort"
 
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 )
@@ -111,6 +112,13 @@ func WireFromRaw(raw tftypes.Value, spec AttrSpec) (map[string]any, error) {
 		return nil, fmt.Errorf("decoding root object: %w", err)
 	}
 	out := make(map[string]any, len(obj))
+	// Spread attrs are applied in a SECOND pass so top-level typed attributes always
+	// win a wire-key collision, deterministically. Applying them inline during the
+	// (randomly-ordered) map iteration meant a spread key (e.g. from `params`) and a
+	// real top-level attr (e.g. warehouse_type) writing the same wire key produced a
+	// run-to-run nondeterministic body. Collected keyed by attr name so multiple
+	// spreads also resolve in a stable (sorted) order.
+	spreads := map[string]map[string]any{}
 	for name, v := range obj {
 		if name == spec.IDAttr || name == spec.ProjectIDAttr || spec.PathParamAttrs[name] {
 			continue
@@ -151,13 +159,13 @@ func WireFromRaw(raw tftypes.Value, spec AttrSpec) (map[string]any, error) {
 			if spec.SpreadAttrs[name] {
 				// Spread the decoded object into the body root (polymorphic
 				// oneOf body collapsed to one jsonencode attr). Must be an object.
+				// Defer the merge to the second pass (top-level attrs take
+				// precedence on a key collision).
 				obj, ok := decoded.(map[string]any)
 				if !ok {
 					return nil, fmt.Errorf("spread attr %q must be a JSON object, got %T", name, decoded)
 				}
-				for k, val := range obj {
-					out[k] = val
-				}
+				spreads[name] = obj
 				continue
 			}
 			out[spec.wireKey(name)] = decoded
@@ -168,6 +176,25 @@ func WireFromRaw(raw tftypes.Value, spec AttrSpec) (map[string]any, error) {
 			return nil, fmt.Errorf("attr %q: %w", name, err)
 		}
 		out[spec.wireKey(name)] = nv
+	}
+	// Second pass: merge spread objects into the body root. A top-level typed attr
+	// already in `out` wins (it is the authoritative, schema-typed value), so a
+	// spread key that collides with one is dropped rather than racing it. Spread
+	// attrs are applied in sorted name order so multiple spreads are deterministic.
+	if len(spreads) > 0 {
+		names := make([]string, 0, len(spreads))
+		for name := range spreads {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			for k, val := range spreads[name] {
+				if _, exists := out[k]; exists {
+					continue
+				}
+				out[k] = val
+			}
+		}
 	}
 	return out, nil
 }

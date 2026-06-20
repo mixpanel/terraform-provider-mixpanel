@@ -37,7 +37,7 @@ func UserProjectRoleResourceSchema(ctx context.Context) schema.Schema {
 			},
 			"key": schema.StringAttribute{
 				Required:            true,
-				MarkdownDescription: "Read-selection key for this association (a stable association key you choose for the grant, e.g. \"<user_email>:<project_id>:<role>\"). Changing it forces a new association.",
+				MarkdownDescription: "Read-selection key for this association (the user's email address, which must appear in the org users list (GET /organizations/{organization_id}/users/); Read confirms the grant by finding this email in that list). Changing it forces a new association.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
