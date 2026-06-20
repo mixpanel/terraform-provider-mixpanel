@@ -9,7 +9,7 @@ import (
 )
 
 func TestAccBehavior_lifecycle(t *testing.T) {
-	srv := newMockServer(t, mockOpts{enveloped: true, idField: "behavior_id", stringID: false, resultsMap: false, upsert: false, listCreate: false})
+	srv := newMockServer(t, mockOpts{enveloped: true, idField: "behavior_id", stringID: false, resultsMap: false, upsert: false, listCreate: false, createIDField: "id"})
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testProtoV6,

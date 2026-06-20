@@ -10,7 +10,7 @@ import (
 )
 
 func TestAccProject_lifecycle(t *testing.T) {
-	srv := newMockServer(t, mockOpts{enveloped: true, idField: "id", stringID: false, resultsMap: false, upsert: false, listCreate: false})
+	srv := newMockServer(t, mockOpts{enveloped: true, idField: "id", stringID: false, resultsMap: false, upsert: false, listCreate: false, rpcLifecycle: true, createNameKey: "projectNames", idListKey: "projectIds", matchAttr: "name"})
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testProtoV6,
