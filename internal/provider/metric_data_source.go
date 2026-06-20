@@ -80,7 +80,7 @@ func (d *MetricDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		resp.Diagnostics.AddError("Decoding metric response", err.Error())
 		return
 	}
-	wire = unwrapResultsMap(wire, false)
+	wire = unwrapResultsMap(wire, true)
 	extras := map[string]any{
 		"metric_id": id,
 	}

@@ -64,7 +64,7 @@ func (d *AnnotationDataSource) Read(ctx context.Context, req datasource.ReadRequ
 	if pid, perr := stringAttrFromRaw(req.Config.Raw, "project_id"); perr == nil && pid != "" {
 		projectID = d.client.ProjectID(pid)
 	}
-	id, err := stringAttrFromRaw(req.Config.Raw, "id")
+	id, err := stringAttrFromRaw(req.Config.Raw, "annotation_id")
 	if err != nil {
 		resp.Diagnostics.AddError("Reading annotation id", err.Error())
 		return
@@ -82,7 +82,7 @@ func (d *AnnotationDataSource) Read(ctx context.Context, req datasource.ReadRequ
 	}
 	wire = unwrapResultsMap(wire, false)
 	extras := map[string]any{
-		"id": id,
+		"annotation_id": id,
 	}
 	if projectID != "" {
 		extras["project_id"] = projectID

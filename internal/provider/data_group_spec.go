@@ -16,5 +16,6 @@ func DataGroupAttrSpec() client.AttrSpec {
 		JSONStringAttrs:   map[string]bool{},
 		JSONEncodeWireKey: map[string]string{"created_at": "created_at", "data_group_id": "data_group_id", "display_name": "display_name", "is_ready": "is_ready", "property_name": "property_name", "ready_at": "ready_at"},
 		OutputOnlyAttrs:   map[string]bool{"created_at": true, "is_ready": true, "ready_at": true, "type": true},
+		SpreadAttrs:       map[string]bool{},
 	}
 }

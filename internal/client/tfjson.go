@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"sort"
 
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 )
@@ -59,6 +60,22 @@ type AttrSpec struct {
 	// they would be serialized into the POST/PATCH body and rejected by APIs
 	// that disallow additional properties. WireFromRaw strips them.
 	OutputOnlyAttrs map[string]bool
+
+	// SpreadAttrs are jsonencode attributes (also listed in JSONEncodeAttrs)
+	// whose decoded JSON OBJECT is spread (merged) into the TOP LEVEL of the
+	// request body rather than nested under the attribute's wire key. This models
+	// a polymorphic create/update body that the HashiCorp generator cannot
+	// express: the body is a discriminated `oneOf` of N variant schemas (e.g. a
+	// warehouse source's bigquery/snowflake/redshift/databricks/postgres
+	// connection config). We collapse all variant-specific fields into one
+	// jsonencode string attribute (e.g. "params") and spread its contents back to
+	// the body root on the wire, so a user writes the variant fields as
+	// jsonencode({...}) and they land flat where the API expects them. The
+	// decoded value MUST be a JSON object; a non-object spread value is an error.
+	// Spread attributes are never echoed back verbatim by the read GET (the read
+	// schema is the flat response), so they are preserved from prior plan/state by
+	// the merge-base read path like any other jsonencode passthrough.
+	SpreadAttrs map[string]bool
 }
 
 // wireKey returns the JSON wire key for a schema attribute name. An explicit
@@ -95,6 +112,13 @@ func WireFromRaw(raw tftypes.Value, spec AttrSpec) (map[string]any, error) {
 		return nil, fmt.Errorf("decoding root object: %w", err)
 	}
 	out := make(map[string]any, len(obj))
+	// Spread attrs are applied in a SECOND pass so top-level typed attributes always
+	// win a wire-key collision, deterministically. Applying them inline during the
+	// (randomly-ordered) map iteration meant a spread key (e.g. from `params`) and a
+	// real top-level attr (e.g. warehouse_type) writing the same wire key produced a
+	// run-to-run nondeterministic body. Collected keyed by attr name so multiple
+	// spreads also resolve in a stable (sorted) order.
+	spreads := map[string]map[string]any{}
 	for name, v := range obj {
 		if name == spec.IDAttr || name == spec.ProjectIDAttr || spec.PathParamAttrs[name] {
 			continue
@@ -132,6 +156,18 @@ func WireFromRaw(raw tftypes.Value, spec AttrSpec) (map[string]any, error) {
 			if err := json.Unmarshal([]byte(s), &decoded); err != nil {
 				return nil, fmt.Errorf("parsing jsonencode attr %q: %w", name, err)
 			}
+			if spec.SpreadAttrs[name] {
+				// Spread the decoded object into the body root (polymorphic
+				// oneOf body collapsed to one jsonencode attr). Must be an object.
+				// Defer the merge to the second pass (top-level attrs take
+				// precedence on a key collision).
+				obj, ok := decoded.(map[string]any)
+				if !ok {
+					return nil, fmt.Errorf("spread attr %q must be a JSON object, got %T", name, decoded)
+				}
+				spreads[name] = obj
+				continue
+			}
 			out[spec.wireKey(name)] = decoded
 			continue
 		}
@@ -140,6 +176,25 @@ func WireFromRaw(raw tftypes.Value, spec AttrSpec) (map[string]any, error) {
 			return nil, fmt.Errorf("attr %q: %w", name, err)
 		}
 		out[spec.wireKey(name)] = nv
+	}
+	// Second pass: merge spread objects into the body root. A top-level typed attr
+	// already in `out` wins (it is the authoritative, schema-typed value), so a
+	// spread key that collides with one is dropped rather than racing it. Spread
+	// attrs are applied in sorted name order so multiple spreads are deterministic.
+	if len(spreads) > 0 {
+		names := make([]string, 0, len(spreads))
+		for name := range spreads {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			for k, val := range spreads[name] {
+				if _, exists := out[k]; exists {
+					continue
+				}
+				out[k] = val
+			}
+		}
 	}
 	return out, nil
 }

@@ -16,5 +16,6 @@ func ThemeAttrSpec() client.AttrSpec {
 		JSONStringAttrs:   map[string]bool{},
 		JSONEncodeWireKey: map[string]string{"allow_staff_override": "allow_staff_override", "can_share": "can_share", "can_update_basic": "can_update_basic", "can_update_restricted": "can_update_restricted", "can_update_visibility": "can_update_visibility", "can_view": "can_view", "created_by": "created_by", "global_access_type": "global_access_type", "is_locked": "is_locked", "is_superadmin": "is_superadmin", "is_visible": "is_visible"},
 		OutputOnlyAttrs:   map[string]bool{},
+		SpreadAttrs:       map[string]bool{},
 	}
 }

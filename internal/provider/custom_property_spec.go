@@ -16,5 +16,6 @@ func CustomPropertyAttrSpec() client.AttrSpec {
 		JSONStringAttrs:   map[string]bool{},
 		JSONEncodeWireKey: map[string]string{"can_update_basic": "canUpdateBasic", "composed_properties": "composedProperties", "data_group_id": "dataGroupId", "display_formula": "displayFormula", "display_options": "displayOptions", "example_value": "exampleValue", "global_access_type": "globalAccessType", "is_locked": "isLocked", "is_session_scoped": "isSessionScoped", "is_visible": "isVisible", "join_property_type": "joinPropertyType", "mapped_data_group_id": "mappedDataGroupId", "property_type": "propertyType", "referenced_by": "referencedBy", "referenced_directly_by": "referencedDirectlyBy", "referenced_raw_event_properties": "referencedRawEventProperties", "references_borrowed_property": "referencesBorrowedProperty", "resource_type": "resourceType"},
 		OutputOnlyAttrs:   map[string]bool{"can_update_basic": true, "created": true, "is_session_scoped": true, "join_property_type": true, "mapped_data_group_id": true, "modified": true, "project": true, "property_type": true, "referenced_by": true, "referenced_directly_by": true, "referenced_raw_event_properties": true, "references_borrowed_property": true, "user": true},
+		SpreadAttrs:       map[string]bool{},
 	}
 }

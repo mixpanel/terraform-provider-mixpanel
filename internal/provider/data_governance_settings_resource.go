@@ -46,6 +46,7 @@ func (r *DataGovernanceSettingsResource) Schema(ctx context.Context, req resourc
 	s := rsc.DataGovernanceSettingsResourceSchema(ctx)
 	s.Attributes["id"] = schema.StringAttribute{Computed: true}
 	s.Attributes["data_standards"] = schema.StringAttribute{Optional: true, Computed: true}
+	requireReplace(s.Attributes, "project_id")
 	stabilizeComputed(s.Attributes)
 	resp.Schema = s
 }

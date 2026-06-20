@@ -16,5 +16,6 @@ func DashboardAttrSpec() client.AttrSpec {
 		JSONStringAttrs:   map[string]bool{},
 		JSONEncodeWireKey: map[string]string{"card_order": "card_order", "creator_email": "creator_email", "creator_id": "creator_id", "creator_name": "creator_name", "generation_type": "generation_type", "global_access_type": "global_access_type", "is_draft": "is_draft", "is_favorited": "is_favorited", "is_private": "is_private", "is_restricted": "is_restricted", "layout_version": "layout_version", "pinned_date": "pinned_date", "target_parent_dashboard_id": "target_parent_dashboard_id", "target_project_id": "target_project_id", "template_type": "template_type", "time_filter": "time_filter", "total_view_count": "total_view_count", "unique_view_count": "unique_view_count"},
 		OutputOnlyAttrs:   map[string]bool{"created": true, "creator": true, "creator_email": true, "creator_id": true, "creator_name": true, "is_favorited": true, "layout_version": true, "modified": true, "pinned_date": true, "template_type": true, "total_view_count": true, "unique_view_count": true},
+		SpreadAttrs:       map[string]bool{},
 	}
 }

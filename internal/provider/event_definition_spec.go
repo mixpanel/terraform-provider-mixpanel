@@ -16,5 +16,6 @@ func EventDefinitionAttrSpec() client.AttrSpec {
 		JSONStringAttrs:   map[string]bool{},
 		JSONEncodeWireKey: map[string]string{"created_utc": "createdUTC", "modified_utc": "modifiedUTC", "team_contacts": "team_contacts"},
 		OutputOnlyAttrs:   map[string]bool{"collect_everything_event_id": true, "contacts": true, "created_utc": true, "custom_event_id": true, "description": true, "display_name": true, "dropped": true, "hidden": true, "last_modified": true, "merged": true, "merged_event_id": true, "modified_utc": true, "name": true, "platforms": true, "status": true, "tags": true, "team_contacts": true, "verified": true},
+		SpreadAttrs:       map[string]bool{},
 	}
 }

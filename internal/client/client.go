@@ -137,7 +137,18 @@ type APIError struct {
 }
 
 func (e *APIError) Error() string {
-	return fmt.Sprintf("mixpanel API %s %s: status %d: %s", e.Method, e.Path, e.StatusCode, e.Body)
+	msg := fmt.Sprintf("mixpanel API %s %s: status %d: %s", e.Method, e.Path, e.StatusCode, e.Body)
+	// Org-scoped resources (teams, projects, org settings, user/role grants) are
+	// permission-gated: the service account must be an organization admin/owner.
+	// A project-scoped service account authenticates fine (reads work) but gets a
+	// 403 on these writes. Surface that clearly so users know it's a privilege
+	// issue, not a bad request or wrong credentials.
+	if e.StatusCode == 403 && strings.Contains(e.Path, "/organizations/") {
+		msg += "\n\nThis is an organization-scoped operation that requires an organization-admin " +
+			"service account. The configured service account authenticates but lacks org-admin " +
+			"permission on this organization. Use a service account that is an admin/owner of the org."
+	}
+	return msg
 }
 
 // Do performs an HTTP request against an absolute API path. If body is non-nil it

@@ -67,7 +67,7 @@ func (d *ExperimentDataSource) Read(ctx context.Context, req datasource.ReadRequ
 	if pid, perr := stringAttrFromRaw(req.Config.Raw, "project_id"); perr == nil && pid != "" {
 		projectID = d.client.ProjectID(pid)
 	}
-	id, err := stringAttrFromRaw(req.Config.Raw, "id")
+	id, err := stringAttrFromRaw(req.Config.Raw, "experiment_id")
 	if err != nil {
 		resp.Diagnostics.AddError("Reading experiment id", err.Error())
 		return
@@ -85,7 +85,7 @@ func (d *ExperimentDataSource) Read(ctx context.Context, req datasource.ReadRequ
 	}
 	wire = unwrapResultsMap(wire, false)
 	extras := map[string]any{
-		"id": id,
+		"experiment_id": id,
 	}
 	if projectID != "" {
 		extras["project_id"] = projectID

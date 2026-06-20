@@ -16,5 +16,6 @@ func DataGovernanceSettingsAttrSpec() client.AttrSpec {
 		JSONStringAttrs:   map[string]bool{},
 		JSONEncodeWireKey: map[string]string{"data_standards": "dataStandards"},
 		OutputOnlyAttrs:   map[string]bool{},
+		SpreadAttrs:       map[string]bool{},
 	}
 }

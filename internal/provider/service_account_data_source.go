@@ -64,7 +64,7 @@ func (d *ServiceAccountDataSource) Read(ctx context.Context, req datasource.Read
 	if oid, oerr := stringAttrFromRaw(req.Config.Raw, "organization_id"); oerr == nil && oid != "" {
 		projectID = d.client.OrganizationID(oid)
 	}
-	id, err := stringAttrFromRaw(req.Config.Raw, "id")
+	id, err := stringAttrFromRaw(req.Config.Raw, "serviceaccount_id")
 	if err != nil {
 		resp.Diagnostics.AddError("Reading service_account id", err.Error())
 		return
@@ -82,7 +82,7 @@ func (d *ServiceAccountDataSource) Read(ctx context.Context, req datasource.Read
 	}
 	wire = unwrapResultsMap(wire, false)
 	extras := map[string]any{
-		"id": id,
+		"serviceaccount_id": id,
 	}
 	if projectID != "" {
 		extras["organization_id"] = projectID

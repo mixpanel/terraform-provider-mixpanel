@@ -64,7 +64,7 @@ func (d *HeatMapCollectionDataSource) Read(ctx context.Context, req datasource.R
 	if pid, perr := stringAttrFromRaw(req.Config.Raw, "project_id"); perr == nil && pid != "" {
 		projectID = d.client.ProjectID(pid)
 	}
-	id, err := stringAttrFromRaw(req.Config.Raw, "id")
+	id, err := stringAttrFromRaw(req.Config.Raw, "heat_map_collection_id")
 	if err != nil {
 		resp.Diagnostics.AddError("Reading heat_map_collection id", err.Error())
 		return
@@ -82,7 +82,7 @@ func (d *HeatMapCollectionDataSource) Read(ctx context.Context, req datasource.R
 	}
 	wire = unwrapResultsMap(wire, false)
 	extras := map[string]any{
-		"id": id,
+		"heat_map_collection_id": id,
 	}
 	if projectID != "" {
 		extras["project_id"] = projectID

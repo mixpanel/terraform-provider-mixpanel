@@ -74,6 +74,22 @@ type mockOpts struct {
 	resultsMap bool   // shape results as {id: obj} (themes_to_dict_map convention)
 	upsert     bool   // create POSTs to an instance path with a config-supplied id
 	listCreate bool   // create response is a list the provider selects from (collection-body-id)
+	// createIDField, when set and different from idField, is the field name the
+	// CREATE response carries the server-assigned id under. A read_after_create
+	// entity whose create response is a flat id-bearing object can return the id
+	// under a key ("id") that differs from the canonical read identity field
+	// (e.g. behavior_id): the create handler extracts the id from this key, then
+	// re-reads via the instance GET (which returns the id under idField).
+	createIDField string
+	// rpcLifecycle models an org-scoped RPC entity (project) that has no REST CRUD:
+	// create POSTs {createNameKey:[<name>]} to .../create-<plural>/ and the
+	// enveloped response is an ARRAY of created rows (each {idField, matchAttr:name});
+	// read GETs the list path and returns every stored row; delete POSTs
+	// {idListKey:[<id>]} to .../delete-<plural>/. matchAttr defaults to "name".
+	rpcLifecycle  bool
+	createNameKey string
+	idListKey     string
+	matchAttr     string
 }
 
 // mockServer is an in-memory echo backend for the Mixpanel App API.
@@ -114,6 +130,11 @@ func (m *mockServer) handle(w http.ResponseWriter, r *http.Request) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if m.opts.rpcLifecycle {
+		m.handleRPC(w, r)
+		return
+	}
+
 	switch r.Method {
 	case http.MethodPost:
 		body := m.parseBody(r)
@@ -145,6 +166,12 @@ func (m *mockServer) handle(w http.ResponseWriter, r *http.Request) {
 			idStr = strconv.Itoa(m.counter)
 		}
 		body[m.opts.idField] = m.idValue(idStr)
+		if m.opts.createIDField != "" && m.opts.createIDField != m.opts.idField {
+			// read_after_create entities whose create response carries the id under a
+			// different key than the read identity field (e.g. behavior: create -> id,
+			// read -> behavior_id). Both keys are harmless on the stored object.
+			body[m.opts.createIDField] = m.idValue(idStr)
+		}
 		m.store[idStr] = body
 		if m.opts.listCreate {
 			// Collection-body-id create: the provider selects the new element from
@@ -183,6 +210,61 @@ func (m *mockServer) handle(w http.ResponseWriter, r *http.Request) {
 		m.respond(w, "", map[string]any{})
 	default:
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+	}
+}
+
+// handleRPC answers the org-scoped RPC lifecycle (project): create-<plural>,
+// the list path, and delete-<plural>. The caller holds m.mu.
+func (m *mockServer) handleRPC(w http.ResponseWriter, r *http.Request) {
+	matchAttr := m.opts.matchAttr
+	if matchAttr == "" {
+		matchAttr = "name"
+	}
+	seg := lastSegment(r.URL.Path)
+	switch {
+	case r.Method == http.MethodPost && strings.HasPrefix(seg, "create-"):
+		body := m.parseBody(r)
+		names, _ := body[m.opts.createNameKey].([]any)
+		created := make([]any, 0, len(names))
+		for _, n := range names {
+			m.counter++
+			idStr := strconv.Itoa(m.counter)
+			obj := map[string]any{m.opts.idField: m.idValue(idStr), matchAttr: n}
+			m.store[idStr] = obj
+			created = append(created, obj)
+		}
+		m.respondValue(w, created)
+	case r.Method == http.MethodPost && strings.HasPrefix(seg, "delete-"):
+		body := m.parseBody(r)
+		ids, _ := body[m.opts.idListKey].([]any)
+		for _, id := range ids {
+			delete(m.store, idToKey(id))
+		}
+		m.respondValue(w, map[string]any{})
+	case r.Method == http.MethodGet:
+		// List path: return every stored row (read_from_list selects by id).
+		list := make([]any, 0, len(m.store))
+		for _, o := range m.store {
+			list = append(list, o)
+		}
+		m.respondValue(w, list)
+	default:
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+	}
+}
+
+// idToKey renders a JSON-decoded id (number or string) as the store key, matching
+// the decimal string strconv.Itoa produced when the row was created.
+func idToKey(id any) string {
+	switch x := id.(type) {
+	case float64:
+		return strconv.FormatFloat(x, 'f', -1, 64)
+	case json.Number:
+		return x.String()
+	case string:
+		return x
+	default:
+		return fmt.Sprintf("%v", x)
 	}
 }
 
