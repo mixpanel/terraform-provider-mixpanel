@@ -92,6 +92,7 @@ func providerDataSources() []func() datasource.DataSource {
 		NewAgentFlowListDataSource,
 		NewAnnotationListDataSource,
 		NewCustomAlertListDataSource,
+		NewCustomEventListDataSource,
 		NewCustomPropertyListDataSource,
 		NewCustomRoleListDataSource,
 		NewEmailDigestListDataSource,
