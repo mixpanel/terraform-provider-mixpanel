@@ -629,6 +629,23 @@
     },
     {
       "keep": true,
+      "short": "business_context",
+      "resource_name": "business_context",
+      "id_attr": "id",
+      "read_schema": "BusinessContextRequest",
+      "create_req_schema": "BusinessContextRequest",
+      "collection": "/api/app/projects/{project_id}/business_context/",
+      "instance": "/api/app/projects/{project_id}/business_context/",
+      "update": "post",
+      "delete": null,
+      "jsonencode_fields": [],
+      "collapse_fields": [],
+      "drop_reason": "",
+      "notes": "Project SINGLETON: business context markdown storage. No collection POST-with-server-id, no id path segment. synthetic id = project_id. create=update=POST /api/app/projects/{project_id}/business_context/ (stores markdown content). read=GET /api/app/projects/{project_id}/business_context/ (retrieves org + project business context). delete=no-op (remove from state, do NOT mutate). This is a singleton resource containing organization and project-level business context in markdown format. The GET 2xx response is repointed to BusinessContextRequest in preprocess so the framework read schema == request schema.",
+      "singleton": true
+    },
+    {
+      "keep": true,
       "short": "behaviors",
       "resource_name": "behavior",
       "id_attr": "id",
