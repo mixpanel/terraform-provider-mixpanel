@@ -475,6 +475,20 @@ resources:
     update:
       path: /api/app/projects/{project_id}/data-governance/data-standards/settings
       method: POST
+  # business_context: project SINGLETON. create=update=PUT and read=GET
+  # all share the instance path; there is no collection-with-server-id and no id
+  # path segment (synthetic id = project_id). The GET 2xx response is repointed to
+  # the request schema in preprocess so read schema == create schema.
+  business_context:
+    create:
+      path: /api/app/projects/{project_id}/business-context
+      method: PUT
+    read:
+      path: /api/app/projects/{project_id}/business-context
+      method: GET
+    update:
+      path: /api/app/projects/{project_id}/business-context
+      method: PUT
   # project: ORG-scoped RPC lifecycle. There is no typed REST CRUD. preprocess
   # synthesizes a ProjectLifecycleModel schema and attaches it as the create POST
   # requestBody; the list GET 2xx response is repointed to the same schema

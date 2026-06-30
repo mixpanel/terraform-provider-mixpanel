@@ -14,6 +14,7 @@ func providerResources() []func() resource.Resource {
 		NewAnnotationResource,
 		NewBehaviorResource,
 		NewBookmarkResource,
+		NewBusinessContextResource,
 		NewCanvasResource,
 		NewCohortResource,
 		NewConnectorResource,

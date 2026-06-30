@@ -4143,6 +4143,28 @@
       }
     },
     {
+      "name": "business_context",
+      "schema": {
+        "attributes": [
+          {
+            "name": "content",
+            "string": {
+              "computed_optional_required": "computed_optional",
+              "default": {
+                "static": ""
+              }
+            }
+          },
+          {
+            "name": "project_id",
+            "int64": {
+              "computed_optional_required": "computed_optional"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "canvas",
       "schema": {
         "attributes": [
