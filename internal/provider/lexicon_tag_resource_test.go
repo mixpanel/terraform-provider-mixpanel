@@ -43,7 +43,7 @@ resource "mixpanel_lexicon_tag" "test" {
 				ImportState:                          true,
 				ImportStateVerify:                    true,
 				ImportStateVerifyIdentifierAttribute: "id",
-				ImportStateIdFunc:                    importIDFunc("mixpanel_lexicon_tag.test", "id", ""),
+				ImportStateIdFunc:                    importIDFunc("mixpanel_lexicon_tag.test", "id", "project_id"),
 				ImportStateVerifyIgnore:              []string{},
 			},
 		},
