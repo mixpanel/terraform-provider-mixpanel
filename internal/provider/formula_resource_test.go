@@ -21,7 +21,10 @@ func TestAccFormula_lifecycle(t *testing.T) {
 resource "mixpanel_formula" "test" {
   name = "tf-acc-test"
   type = "formula"
-  definition = "tf-acc-test"
+  definition = jsonencode({
+    definition = "A + B"
+    referencedMetrics = []
+  })
   project_id = 1
 }`),
 			},
@@ -31,7 +34,10 @@ resource "mixpanel_formula" "test" {
 resource "mixpanel_formula" "test" {
   name = "tf-acc-renamed"
   type = "formula"
-  definition = "tf-acc-test"
+  definition = jsonencode({
+    definition = "A + B"
+    referencedMetrics = []
+  })
   project_id = 1
 }`),
 				ConfigPlanChecks: resource.ConfigPlanChecks{
