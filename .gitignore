@@ -19,3 +19,8 @@ terraform-provider-mixpanel
 terraform-provider-mixpanel_*
 dist/
 *.exe
+
+# Generator: transient full spec (the committed input is gen/spec/openapi.pruned.json)
+# and stage-1 build scratch. See gen/README.md.
+gen/spec/openapi.merged.json
+gen/build/
