@@ -20,7 +20,6 @@ func TestAccLexiconTag_lifecycle(t *testing.T) {
 				Config: providerConfig(srv.URL, `
 resource "mixpanel_lexicon_tag" "test" {
   project_id = 1
-  tag_id = 1
   name = "tf-acc-test"
 }`),
 			},
@@ -29,7 +28,6 @@ resource "mixpanel_lexicon_tag" "test" {
 				Config: providerConfig(srv.URL, `
 resource "mixpanel_lexicon_tag" "test" {
   project_id = 2
-  tag_id = 1
   name = "tf-acc-test"
 }`),
 				ConfigPlanChecks: resource.ConfigPlanChecks{

@@ -20,7 +20,7 @@ func TestAccFormula_lifecycle(t *testing.T) {
 				Config: providerConfig(srv.URL, `
 resource "mixpanel_formula" "test" {
   name = "tf-acc-test"
-  type = "tf-acc-test"
+  type = "formula"
   definition = "tf-acc-test"
   project_id = 1
 }`),
@@ -30,7 +30,7 @@ resource "mixpanel_formula" "test" {
 				Config: providerConfig(srv.URL, `
 resource "mixpanel_formula" "test" {
   name = "tf-acc-renamed"
-  type = "tf-acc-test"
+  type = "formula"
   definition = "tf-acc-test"
   project_id = 1
 }`),
