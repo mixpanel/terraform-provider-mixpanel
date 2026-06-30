@@ -19,3 +19,9 @@ terraform-provider-mixpanel
 terraform-provider-mixpanel_*
 dist/
 *.exe
+
+# Generator: OpenAPI specs are NEVER committed (they map the API surface) — both the
+# full merged spec and the pruned spec are fetched/produced locally before a regen.
+# Plus stage-1 build scratch. See gen/README.md.
+gen/spec/*.json
+gen/build/
