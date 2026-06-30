@@ -14,7 +14,7 @@ func EventDropFilterAttrSpec() client.AttrSpec {
 		PathParamAttrs:    map[string]bool{},
 		JSONEncodeAttrs:   map[string]bool{"filters": true},
 		JSONStringAttrs:   map[string]bool{},
-		JSONEncodeWireKey: map[string]string{"display_name": "display_name", "event_name": "event_name"},
+		JSONEncodeWireKey: map[string]string{},
 		OutputOnlyAttrs:   map[string]bool{"created": true, "deleted": true, "display_name": true, "legacy": true},
 		SpreadAttrs:       map[string]bool{},
 	}

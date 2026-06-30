@@ -14,7 +14,7 @@ func DatasetAttrSpec() client.AttrSpec {
 		PathParamAttrs:    map[string]bool{},
 		JSONEncodeAttrs:   map[string]bool{},
 		JSONStringAttrs:   map[string]bool{},
-		JSONEncodeWireKey: map[string]string{"dataset_id": "dataset_id", "dataset_secrets": "dataset_secrets"},
+		JSONEncodeWireKey: map[string]string{},
 		OutputOnlyAttrs:   map[string]bool{"dataset_secrets": true},
 		SpreadAttrs:       map[string]bool{},
 	}

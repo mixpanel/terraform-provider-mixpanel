@@ -30,7 +30,13 @@ func CustomPropertyDataSourceSchema(ctx context.Context) schema.Schema {
 			"display_formula": schema.StringAttribute{
 				Computed: true,
 			},
+			"display_name": schema.StringAttribute{
+				Computed: true,
+			},
 			"example_value": schema.StringAttribute{
+				Computed: true,
+			},
+			"hidden": schema.BoolAttribute{
 				Computed: true,
 			},
 			"is_locked": schema.BoolAttribute{
@@ -81,7 +87,17 @@ func CustomPropertyDataSourceSchema(ctx context.Context) schema.Schema {
 			"resource_type": schema.StringAttribute{
 				Computed: true,
 			},
+			"sensitive": schema.BoolAttribute{
+				Computed: true,
+			},
+			"tags": schema.ListAttribute{
+				ElementType: types.StringType,
+				Computed:    true,
+			},
 			"user": schema.Int64Attribute{
+				Computed: true,
+			},
+			"verified": schema.BoolAttribute{
 				Computed: true,
 			},
 		},
@@ -95,7 +111,9 @@ type CustomPropertyModel struct {
 	DataGroupId                  types.String `tfsdk:"data_group_id"`
 	Description                  types.String `tfsdk:"description"`
 	DisplayFormula               types.String `tfsdk:"display_formula"`
+	DisplayName                  types.String `tfsdk:"display_name"`
 	ExampleValue                 types.String `tfsdk:"example_value"`
+	Hidden                       types.Bool   `tfsdk:"hidden"`
 	IsLocked                     types.Bool   `tfsdk:"is_locked"`
 	IsSessionScoped              types.Bool   `tfsdk:"is_session_scoped"`
 	IsVisible                    types.Bool   `tfsdk:"is_visible"`
@@ -111,5 +129,8 @@ type CustomPropertyModel struct {
 	ReferencedRawEventProperties types.List   `tfsdk:"referenced_raw_event_properties"`
 	ReferencesBorrowedProperty   types.Bool   `tfsdk:"references_borrowed_property"`
 	ResourceType                 types.String `tfsdk:"resource_type"`
+	Sensitive                    types.Bool   `tfsdk:"sensitive"`
+	Tags                         types.List   `tfsdk:"tags"`
 	User                         types.Int64  `tfsdk:"user"`
+	Verified                     types.Bool   `tfsdk:"verified"`
 }

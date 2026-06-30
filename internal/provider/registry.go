@@ -30,8 +30,10 @@ func providerResources() []func() resource.Resource {
 		NewEventDefinitionResource,
 		NewExperimentResource,
 		NewFeatureFlagResource,
+		NewFormulaResource,
 		NewHeatMapResource,
 		NewHeatMapCollectionResource,
+		NewLexiconTagResource,
 		NewMetricResource,
 		NewOrgRequestAccessSettingsResource,
 		NewOrgSessionSettingsResource,
@@ -96,5 +98,6 @@ func providerDataSources() []func() datasource.DataSource {
 		NewFeatureFlagListDataSource,
 		NewHeatMapListDataSource,
 		NewPlaylistListDataSource,
+		NewSchemaGraphDataSource,
 	}
 }

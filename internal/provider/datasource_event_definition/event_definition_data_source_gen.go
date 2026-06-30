@@ -37,6 +37,9 @@ func EventDefinitionDataSourceSchema(ctx context.Context) schema.Schema {
 			"event_definition_id": schema.Int64Attribute{
 				Required: true,
 			},
+			"example_value": schema.StringAttribute{
+				Computed: true,
+			},
 			"hidden": schema.BoolAttribute{
 				Computed: true,
 			},
@@ -65,6 +68,9 @@ func EventDefinitionDataSourceSchema(ctx context.Context) schema.Schema {
 			"project_id": schema.Int64Attribute{
 				Required: true,
 			},
+			"sensitive": schema.BoolAttribute{
+				Computed: true,
+			},
 			"status": schema.StringAttribute{
 				Computed: true,
 			},
@@ -92,6 +98,7 @@ type EventDefinitionModel struct {
 	DisplayName              types.String `tfsdk:"display_name"`
 	Dropped                  types.Bool   `tfsdk:"dropped"`
 	EventDefinitionId        types.Int64  `tfsdk:"event_definition_id"`
+	ExampleValue             types.String `tfsdk:"example_value"`
 	Hidden                   types.Bool   `tfsdk:"hidden"`
 	Id                       types.Int64  `tfsdk:"id"`
 	LastModified             types.String `tfsdk:"last_modified"`
@@ -101,6 +108,7 @@ type EventDefinitionModel struct {
 	Name                     types.String `tfsdk:"name"`
 	Platforms                types.List   `tfsdk:"platforms"`
 	ProjectId                types.Int64  `tfsdk:"project_id"`
+	Sensitive                types.Bool   `tfsdk:"sensitive"`
 	Status                   types.String `tfsdk:"status"`
 	Tags                     types.List   `tfsdk:"tags"`
 	TeamContacts             types.List   `tfsdk:"team_contacts"`

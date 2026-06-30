@@ -14,7 +14,7 @@ func EmailDigestAttrSpec() client.AttrSpec {
 		PathParamAttrs:    map[string]bool{"email_digest_id": true},
 		JSONEncodeAttrs:   map[string]bool{"slack_subscriptions": true},
 		JSONStringAttrs:   map[string]bool{},
-		JSONEncodeWireKey: map[string]string{"confirmed_date": "confirmed_date", "creator_email": "creator_email", "creator_id": "creator_id", "dashboard_creator_email": "dashboard_creator_email", "dashboard_foreign_private": "dashboard_foreign_private", "dashboard_has_owner_with_permissions": "dashboard_has_owner_with_permissions", "dashboard_id": "dashboard_id", "dashboard_title": "dashboard_title", "digest_has_owner_with_permissions": "digest_has_owner_with_permissions", "has_active_user": "has_active_user", "monthly_week_ordinal": "monthly_week_ordinal", "project_id": "project_id", "schedule_timezone": "schedule_timezone", "slack_subscriptions": "slack_subscriptions", "start_date": "start_date", "workspace_id": "workspace_id", "workspace_name": "workspace_name"},
+		JSONEncodeWireKey: map[string]string{},
 		OutputOnlyAttrs:   map[string]bool{"confirmed_date": true, "created": true, "creator_email": true, "creator_id": true, "dashboard_creator_email": true, "dashboard_foreign_private": true, "dashboard_has_owner_with_permissions": true, "dashboard_title": true, "digest_has_owner_with_permissions": true, "has_active_user": true, "schedule": true, "status": true, "workspace_id": true, "workspace_name": true},
 		SpreadAttrs:       map[string]bool{},
 	}
