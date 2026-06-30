@@ -4,7 +4,6 @@ package provider
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -183,23 +182,8 @@ func (r *FormulaResource) Delete(ctx context.Context, req resource.DeleteRequest
 		resp.Diagnostics.AddError("Reading formula id", err.Error())
 		return
 	}
-
-	// Formula metrics require bulk DELETE (single-item DELETE returns 501).
-	// Build a bulk delete request with a single metric.
-	bulkBody := map[string]interface{}{
-		"metrics": []map[string]interface{}{
-			{"id": id},
-		},
-	}
-
-	bodyBytes, err := json.Marshal(bulkBody)
-	if err != nil {
-		resp.Diagnostics.AddError("Encoding bulk delete request", err.Error())
-		return
-	}
-
-	// Use collection path for bulk delete
-	if _, err := r.client.Do(ctx, "DELETE", r.collectionPath(projectID), bodyBytes); err != nil {
+	// DELETE may return a JSON body (Mixpanel convention); Do tolerates it.
+	if _, err := r.client.Do(ctx, "DELETE", r.instancePath(projectID, id), nil); err != nil {
 		if apiErr, ok := err.(*client.APIError); ok && apiErr.StatusCode == 404 {
 			return
 		}

@@ -44,7 +44,6 @@ func (r *LexiconTagResource) Metadata(ctx context.Context, req resource.Metadata
 
 func (r *LexiconTagResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	s := rsc.LexiconTagResourceSchema(ctx)
-	requireReplace(s.Attributes, "project_id")
 	stabilizeComputed(s.Attributes)
 	resp.Schema = s
 }
@@ -94,24 +93,18 @@ func (r *LexiconTagResource) Create(ctx context.Context, req resource.CreateRequ
 		resp.Diagnostics.AddError("Encoding lexicon_tag request", err.Error())
 		return
 	}
-	if _, err := r.client.Do(ctx, "POST", r.collectionPath(projectID), body); err != nil {
+	respBody, err := r.client.Do(ctx, "POST", r.collectionPath(projectID), body)
+	if err != nil {
 		resp.Diagnostics.AddError("Creating lexicon_tag", err.Error())
 		return
 	}
-	// Read back the canonical settings so state reflects what the API stored.
-	getBody, err := r.client.Do(ctx, "GET", r.collectionPath(projectID), nil)
-	if err != nil {
-		resp.Diagnostics.AddError("Reading lexicon_tag after create", err.Error())
-		return
-	}
-	wire, err := unwrapLexiconTag(getBody)
+	wire, err := unwrapLexiconTag(respBody)
 	if err != nil {
 		resp.Diagnostics.AddError("Decoding lexicon_tag response", err.Error())
 		return
 	}
-	wire = wrapSingleton(wire, "")
-	// synthetic id = project id (a project singleton has one settings object).
-	r.writeLexiconTagState(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, projectID)
+	id := idForLexiconTag(wire)
+	r.writeLexiconTagState(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, id)
 }
 
 func (r *LexiconTagResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -120,7 +113,12 @@ func (r *LexiconTagResource) Read(ctx context.Context, req resource.ReadRequest,
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}
-	respBody, err := r.client.Do(ctx, "GET", r.collectionPath(projectID), nil)
+	id, err := stringAttrFromRaw(req.State.Raw, "id")
+	if err != nil {
+		resp.Diagnostics.AddError("Reading lexicon_tag id", err.Error())
+		return
+	}
+	respBody, err := r.client.Do(ctx, "GET", r.instancePath(projectID, id), nil)
 	if err != nil {
 		if apiErr, ok := err.(*client.APIError); ok && apiErr.StatusCode == 404 {
 			resp.State.RemoveResource(ctx)
@@ -134,9 +132,13 @@ func (r *LexiconTagResource) Read(ctx context.Context, req resource.ReadRequest,
 		resp.Diagnostics.AddError("Decoding lexicon_tag response", err.Error())
 		return
 	}
-	wire = wrapSingleton(wire, "")
-	// synthetic id = project id (a project singleton has one settings object).
-	r.writeLexiconTagState(ctx, &resp.State, &resp.Diagnostics, req.State.Raw, wire, projectID, projectID)
+	// Use the prior state as the merge base so attributes the user manages but
+	// the API does not faithfully echo back on a GET (fields it never returns, or
+	// returns enriched with server-assigned sub-keys such as a subscription id)
+	// are preserved instead of being clobbered to null / a server-mangled shape,
+	// which would otherwise produce a permanent post-refresh diff. Computed-only
+	// values (absent from prior state) are still refreshed from the API response.
+	r.writeLexiconTagState(ctx, &resp.State, &resp.Diagnostics, req.State.Raw, wire, projectID, id)
 }
 
 func (r *LexiconTagResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -146,36 +148,33 @@ func (r *LexiconTagResource) Update(ctx context.Context, req resource.UpdateRequ
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}
+	id, err := stringAttrFromRaw(req.State.Raw, "id")
+	if err != nil {
+		resp.Diagnostics.AddError("Reading lexicon_tag id", err.Error())
+		return
+	}
 	body, err := client.WireFromRaw(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding lexicon_tag request", err.Error())
 		return
 	}
-	if _, err := r.client.Do(ctx, "POST", r.collectionPath(projectID), body); err != nil {
+	respBody, err := r.client.Do(ctx, "PATCH", r.instancePath(projectID, id), body)
+	if err != nil {
 		resp.Diagnostics.AddError("Updating lexicon_tag", err.Error())
 		return
 	}
-	getBody, err := r.client.Do(ctx, "GET", r.collectionPath(projectID), nil)
-	if err != nil {
-		resp.Diagnostics.AddError("Reading lexicon_tag after update", err.Error())
-		return
-	}
-	wire, err := unwrapLexiconTag(getBody)
+	wire, err := unwrapLexiconTag(respBody)
 	if err != nil {
 		resp.Diagnostics.AddError("Decoding lexicon_tag response", err.Error())
 		return
 	}
-	wire = wrapSingleton(wire, "")
-	r.writeLexiconTagState(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, projectID)
+	r.writeLexiconTagState(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, id)
 }
 
 func (r *LexiconTagResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	// lexicon_tag has no DELETE endpoint in the Mixpanel API (would return 405).
-	// Terraform destroy removes the tag from state only, orphaning it on the server.
-	// This is acceptable for metadata tags which can safely persist.
-	_ = ctx
-	_ = req
-	_ = resp
+	// Lexicon tags have no DELETE endpoint in the API.
+	// This is a no-op - the tag will be orphaned on the server when removed from Terraform state.
+	// This is acceptable behavior for metadata/categorization resources.
 }
 
 func (r *LexiconTagResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {

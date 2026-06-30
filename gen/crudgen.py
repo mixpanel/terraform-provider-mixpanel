@@ -141,10 +141,9 @@ OVERRIDES = {
         "instance": "/api/app/projects/{project_id}/data-definitions/tags/{tag_id}",
         "id_param": "tag_id",
         "update": "patch",
-        "delete": None,
+        "delete": None,  # No DELETE endpoint - orphan on destroy
         "project_scoped": True,
         "enveloped": True,
-        "singleton": True,  # Use no-op delete template
     },
     # custom_property's CustomPropertyCreateRequest / CustomPropertyResponse use
     # camelCase wire keys (dataGroupId, displayFormula, ...), but the bridge writes
