@@ -1,0 +1,779 @@
+# HashiCorp tfplugingen-openapi generator config for the Mixpanel provider.
+# Generated from gen/refined_manifest.json.
+# Input spec: gen/build/openapi.hashicorp.json (produced by gen/preprocess_spec.py)
+# Every refined entity -> one resource + one singular data source.
+# schema.ignores drops genuinely-polymorphic jsonencode_fields (re-added as
+# jsonencode string attributes in the hand-written CRUD step).
+provider:
+  name: mixpanel
+
+resources:
+  custom_event:
+    schema:
+      ignores:
+        - custom_event.alternatives.valid_segfilter
+    create:
+      path: /api/app/custom_events/{project_id}
+      method: POST
+    read:
+      path: /api/app/custom_events/{project_id}/{customevent_id}
+      method: GET
+    update:
+      path: /api/app/custom_events/{project_id}/{customevent_id}
+      method: PUT
+    delete:
+      path: /api/app/custom_events/{project_id}/{customevent_id}
+      method: DELETE
+  service_account:
+    create:
+      path: /api/app/organizations/{organization_id}/service-accounts
+      method: POST
+    read:
+      path: /api/app/organizations/{organization_id}/service-accounts/{serviceaccount_id}
+      method: GET
+    delete:
+      path: /api/app/organizations/{organization_id}/service-accounts/{serviceaccount_id}
+      method: DELETE
+  agent_flow:
+    schema:
+      ignores:
+        - graph
+    create:
+      path: /api/app/projects/{project_id}/agent-flows
+      method: POST
+    read:
+      path: /api/app/projects/{project_id}/agent-flows/{agent_flow_id}
+      method: GET
+    update:
+      path: /api/app/projects/{project_id}/agent-flows/{agent_flow_id}
+      method: PATCH
+    delete:
+      path: /api/app/projects/{project_id}/agent-flows/{agent_flow_id}
+      method: DELETE
+  custom_alert:
+    schema:
+      ignores:
+        - condition
+        - subscriptions
+    create:
+      path: /api/app/projects/{project_id}/alerts/custom
+      method: POST
+    read:
+      path: /api/app/projects/{project_id}/alerts/custom/{custom_alert_id}
+      method: GET
+    update:
+      path: /api/app/projects/{project_id}/alerts/custom/{custom_alert_id}
+      method: PATCH
+    delete:
+      path: /api/app/projects/{project_id}/alerts/custom/{custom_alert_id}
+      method: DELETE
+  annotation:
+    schema:
+      ignores:
+        - user
+        - tags
+    create:
+      path: /api/app/projects/{project_id}/annotations
+      method: POST
+    read:
+      path: /api/app/projects/{project_id}/annotations/{annotation_id}
+      method: GET
+    update:
+      path: /api/app/projects/{project_id}/annotations/{annotation_id}
+      method: PUT
+    delete:
+      path: /api/app/projects/{project_id}/annotations/{annotation_id}
+      method: DELETE
+  bookmark:
+    schema:
+      ignores:
+        - metadata
+        - params
+    create:
+      path: /api/app/projects/{project_id}/bookmarks
+      method: POST
+    read:
+      path: /api/app/projects/{project_id}/bookmarks/{bookmark_id}
+      method: GET
+    update:
+      path: /api/app/projects/{project_id}/bookmarks/{bookmark_id}
+      method: PATCH
+    delete:
+      path: /api/app/projects/{project_id}/bookmarks/{bookmark_id}
+      method: DELETE
+  canvas:
+    create:
+      path: /api/app/projects/{project_id}/canvases
+      method: POST
+    read:
+      path: /api/app/projects/{project_id}/canvases/{metric_tree_id}
+      method: GET
+  cohort:
+    schema:
+      ignores:
+        - groups
+        - count
+    create:
+      path: /api/app/projects/{project_id}/cohorts
+      method: POST
+    read:
+      path: /api/app/projects/{project_id}/cohorts/{cohort_id}
+      method: GET
+    update:
+      path: /api/app/projects/{project_id}/cohorts/{cohort_id}
+      method: PATCH
+    delete:
+      path: /api/app/projects/{project_id}/cohorts/{cohort_id}
+      method: DELETE
+  connector:
+    schema:
+      ignores:
+        - category_properties
+        - connector_properties
+    create:
+      path: /api/app/projects/{project_id}/connectors
+      method: POST
+    read:
+      path: /api/app/projects/{project_id}/connectors/{connector_id}
+      method: GET
+    delete:
+      path: /api/app/projects/{project_id}/connectors/{connector_id}
+      method: DELETE
+  custom_role:
+    create:
+      path: /api/app/projects/{project_id}/custom-roles
+      method: POST
+    read:
+      path: /api/app/projects/{project_id}/custom-roles/{role_id}
+      method: GET
+    update:
+      path: /api/app/projects/{project_id}/custom-roles/{role_id}
+      method: PUT
+    delete:
+      path: /api/app/projects/{project_id}/custom-roles/{role_id}
+      method: DELETE
+  custom_property:
+    schema:
+      ignores:
+        - behavior
+        - composedProperties
+        - displayOptions
+    create:
+      path: /api/app/projects/{project_id}/custom_properties
+      method: POST
+    read:
+      path: /api/app/projects/{project_id}/custom_properties/{custom_property_id}
+      method: GET
+    update:
+      path: /api/app/projects/{project_id}/custom_properties/{custom_property_id}
+      method: PUT
+    delete:
+      path: /api/app/projects/{project_id}/custom_properties/{custom_property_id}
+      method: DELETE
+  email_digest:
+    schema:
+      ignores:
+        - slack_subscriptions
+    create:
+      path: /api/app/projects/{project_id}/dashboard-reports/email-digests
+      method: POST
+    read:
+      path: /api/app/projects/{project_id}/dashboard-reports/email-digests/{email_digest_id}
+      method: GET
+    update:
+      path: /api/app/projects/{project_id}/dashboard-reports/email-digests/{email_digest_id}
+      method: PUT
+    delete:
+      path: /api/app/projects/{project_id}/dashboard-reports/email-digests/{email_digest_id}
+      method: DELETE
+  dashboard:
+    schema:
+      ignores:
+        - filters.propertyName
+        - rows.contents
+    create:
+      path: /api/app/projects/{project_id}/dashboards
+      method: POST
+    read:
+      path: /api/app/projects/{project_id}/dashboards/{dashboard_id}
+      method: GET
+    update:
+      path: /api/app/projects/{project_id}/dashboards/{dashboard_id}
+      method: PATCH
+    delete:
+      path: /api/app/projects/{project_id}/dashboards/{dashboard_id}
+      method: DELETE
+  experiment:
+    schema:
+      ignores:
+        - exposures_cache
+        - feature_flag
+        - results_cache
+        - settings
+        - metrics.definition
+        - metrics.filters
+    create:
+      path: /api/app/projects/{project_id}/experiments
+      method: POST
+    read:
+      path: /api/app/projects/{project_id}/experiments/{experiment_id}
+      method: GET
+    update:
+      path: /api/app/projects/{project_id}/experiments/{experiment_id}
+      method: PATCH
+    delete:
+      path: /api/app/projects/{project_id}/experiments/{experiment_id}
+      method: DELETE
+  feature_flag:
+    schema:
+      ignores:
+        - content_environments
+        - ruleset.rollout.cohort_definition
+        - ruleset.rollout.runtime_evaluation_definition
+        - ruleset.rollout.runtime_evaluation_rule
+        - ruleset.rollout.runtime_event_rule
+        - ruleset.rollout.variant_override
+        - ruleset.test
+        - ruleset.variants.value
+    create:
+      path: /api/app/projects/{project_id}/feature-flags
+      method: POST
+    read:
+      path: /api/app/projects/{project_id}/feature-flags/{flag_id}
+      method: GET
+    update:
+      path: /api/app/projects/{project_id}/feature-flags/{flag_id}
+      method: PUT
+    delete:
+      path: /api/app/projects/{project_id}/feature-flags/{flag_id}
+      method: DELETE
+  heat_map_collection:
+    schema:
+      ignores:
+        - heat_maps
+    create:
+      path: /api/app/projects/{project_id}/heat-maps/collection
+      method: POST
+    read:
+      path: /api/app/projects/{project_id}/heat-maps/collection/{heat_map_collection_id}
+      method: GET
+    update:
+      path: /api/app/projects/{project_id}/heat-maps/collection/{heat_map_collection_id}
+      method: PUT
+    delete:
+      path: /api/app/projects/{project_id}/heat-maps/collection/{heat_map_collection_id}
+      method: DELETE
+  heat_map:
+    schema:
+      ignores:
+        - goal
+        - goal_weight
+        - time_filter
+        - filters
+    create:
+      path: /api/app/projects/{project_id}/heat-maps
+      method: POST
+    read:
+      path: /api/app/projects/{project_id}/heat-maps/{heat_map_id}
+      method: GET
+    update:
+      path: /api/app/projects/{project_id}/heat-maps/{heat_map_id}
+      method: PUT
+    delete:
+      path: /api/app/projects/{project_id}/heat-maps/{heat_map_id}
+      method: DELETE
+  metric:
+    schema:
+      ignores:
+        - definition
+    create:
+      path: /api/app/projects/{project_id}/metrics
+      method: POST
+    read:
+      path: /api/app/projects/{project_id}/metrics/{metric_id}
+      method: GET
+    update:
+      path: /api/app/projects/{project_id}/metrics/{metric_id}
+      method: PATCH
+    delete:
+      path: /api/app/projects/{project_id}/metrics/{metric_id}
+      method: DELETE
+  playlist:
+    schema:
+      ignores:
+        - filters
+        - time_filter
+    create:
+      path: /api/app/projects/{project_id}/playlists
+      method: POST
+    read:
+      path: /api/app/projects/{project_id}/playlists/{playlist_id}
+      method: GET
+    update:
+      path: /api/app/projects/{project_id}/playlists/{playlist_id}
+      method: PUT
+    delete:
+      path: /api/app/projects/{project_id}/playlists/{playlist_id}
+      method: DELETE
+  theme:
+    schema:
+      ignores:
+        - data
+    create:
+      path: /api/app/projects/{project_id}/themes
+      method: POST
+    read:
+      path: /api/app/projects/{project_id}/themes/{theme_id}
+      method: GET
+    update:
+      path: /api/app/projects/{project_id}/themes/{theme_id}
+      method: PATCH
+    delete:
+      path: /api/app/projects/{project_id}/themes/{theme_id}
+      method: DELETE
+  warehouse_source:
+    create:
+      path: /api/app/projects/{project_id}/warehouse-sources/sources
+      method: POST
+    read:
+      path: /api/app/projects/{project_id}/warehouse-sources/sources/{source_id}
+      method: GET
+    update:
+      path: /api/app/projects/{project_id}/warehouse-sources/sources/{source_id}
+      method: PATCH
+    delete:
+      path: /api/app/projects/{project_id}/warehouse-sources/sources/{source_id}
+      method: DELETE
+  rollup_project:
+    create:
+      path: /api/app/rollup_projects
+      method: POST
+    read:
+      path: /api/app/rollup_projects/{rollup_project_id}
+      method: GET
+    update:
+      path: /api/app/rollup_projects/{rollup_project_id}
+      method: POST
+    delete:
+      path: /api/app/rollup_projects/{rollup_project_id}
+      method: DELETE
+  # P2 read-from-list entities: no instance GET. The read path is the COLLECTION
+  # GET, whose 2xx response the preprocessor repoints to the single-item schema
+  # (WebhookItem / DataGroup) so the framework builds a single-object read schema.
+  # The instance-path {webhook_id}/{data_group_id} param is surfaced via the
+  # update/delete paths. The hand-written CRUD Read selects the matching element.
+  webhook:
+    create:
+      path: /api/app/projects/{project_id}/webhooks
+      method: POST
+    read:
+      path: /api/app/projects/{project_id}/webhooks
+      method: GET
+    update:
+      path: /api/app/projects/{project_id}/webhooks/{webhook_id}
+      method: PATCH
+    delete:
+      path: /api/app/projects/{project_id}/webhooks/{webhook_id}
+      method: DELETE
+  data_group:
+    create:
+      path: /api/app/projects/{project_id}/data-groups
+      method: POST
+    read:
+      path: /api/app/projects/{project_id}/data-groups
+      method: GET
+    update:
+      path: /api/app/projects/{project_id}/data-groups/{data_group_id}
+      method: POST
+    delete:
+      path: /api/app/projects/{project_id}/data-groups/{data_group_id}
+      method: DELETE
+  event_definition:
+    create:
+      path: /api/app/projects/{project_id}/event-definitions
+      method: POST
+    read:
+      path: /api/app/projects/{project_id}/event-definitions/{event_definition_id}
+      method: GET
+    update:
+      path: /api/app/projects/{project_id}/event-definitions/{event_definition_id}
+      method: PATCH
+    delete:
+      path: /api/app/projects/{project_id}/event-definitions/{event_definition_id}
+      method: DELETE
+  workspace:
+    schema:
+      ignores:
+        - data_filters
+    create:
+      path: /api/app/projects/{project_id}/workspaces
+      method: POST
+    read:
+      path: /api/app/projects/{project_id}/workspaces/{workspace_id}
+      method: GET
+    update:
+      path: /api/app/projects/{project_id}/workspaces/{workspace_id}
+      method: PATCH
+    delete:
+      path: /api/app/projects/{project_id}/workspaces/{workspace_id}
+      method: DELETE
+  # dataset is a client-id UPSERT: create AND update both POST to the INSTANCE
+  # path (dataset_id is client-supplied). The collection GET has no POST. The
+  # hand-written CRUD (crudgen OVERRIDES create_to_instance=True) routes create
+  # through the instance path; this config points create at the instance POST so
+  # tfplugingen merges the DatasetUpsertRequest body into the resource schema.
+  dataset:
+    create:
+      path: /api/app/projects/{project_id}/datasets/{dataset_id}
+      method: POST
+    read:
+      path: /api/app/projects/{project_id}/datasets/{dataset_id}
+      method: GET
+    update:
+      path: /api/app/projects/{project_id}/datasets/{dataset_id}
+      method: POST
+    delete:
+      path: /api/app/projects/{project_id}/datasets/{dataset_id}
+      method: DELETE
+  # event_drop_filter: collection-path body-id CRUD. All verbs hit the COLLECTION
+  # path; the id is carried in the JSON body. read is the collection GET, whose
+  # 2xx response the preprocessor repoints to the single EventDropFilterResult item
+  # schema (read_from_list). update/delete point at the same collection path so the
+  # framework merges the EventDropFilterRequest body; the hand-written CRUD injects
+  # the id into the body at runtime. `filters` is a free-form list -> jsonencode.
+  event_drop_filter:
+    schema:
+      ignores:
+        - filters
+    create:
+      path: /api/app/projects/{project_id}/data-definitions/events/drop-filters
+      method: POST
+    read:
+      path: /api/app/projects/{project_id}/data-definitions/events/drop-filters
+      method: GET
+    update:
+      path: /api/app/projects/{project_id}/data-definitions/events/drop-filters
+      method: PATCH
+    delete:
+      path: /api/app/projects/{project_id}/data-definitions/events/drop-filters
+      method: DELETE
+  # data_governance_settings: project SINGLETON. create=update=POST and read=GET
+  # all share the instance path; there is no collection-with-server-id and no id
+  # path segment (synthetic id = project_id). The GET 2xx response is repointed to
+  # the request schema in preprocess so read schema == create schema. The single
+  # `dataStandards` nested object is treated as a jsonencode passthrough.
+  data_governance_settings:
+    schema:
+      ignores:
+        - dataStandards
+    create:
+      path: /api/app/projects/{project_id}/data-governance/data-standards/settings
+      method: POST
+    read:
+      path: /api/app/projects/{project_id}/data-governance/data-standards/settings
+      method: GET
+    update:
+      path: /api/app/projects/{project_id}/data-governance/data-standards/settings
+      method: POST
+  # project: ORG-scoped RPC lifecycle. There is no typed REST CRUD. preprocess
+  # synthesizes a ProjectLifecycleModel schema and attaches it as the create POST
+  # requestBody; the list GET 2xx response is repointed to the same schema
+  # (read_from_list). create=POST create-projects (body {projectNames:[name]} at
+  # runtime), read=GET projects (enveloped array, select by id). No update (name is
+  # ForceNew); delete=POST delete-projects (body {projectIds:[id]}) handled by the
+  # hand-written rpc_lifecycle CRUD, so no delete block here.
+  project:
+    create:
+      path: /organizations/{organization_id}/create-projects/
+      method: POST
+    read:
+      path: /organizations/{organization_id}/projects/
+      method: GET
+  # behavior: net-new CRUD. The create body is polymorphic and ALL responses are
+  # the untyped BaseOkResponseModel[dict] envelope, so preprocess repoints the
+  # POST/GET/PATCH 2xx responses to the request schema BehaviorCreateRequest
+  # (read_repoint_schema). definition (open BehaviorDefinition) and behaviors
+  # (list[BehaviorCreateItem]) are polymorphic -> ignored and re-added as
+  # jsonencode string passthroughs in the CRUD step. read_after_create extracts
+  # the server id from the untyped create response and GETs the instance.
+  behavior:
+    schema:
+      ignores:
+        - definition
+        - behaviors
+    create:
+      path: /api/app/projects/{project_id}/behaviors
+      method: POST
+    read:
+      path: /api/app/projects/{project_id}/behaviors/{behavior_id}
+      method: GET
+    update:
+      path: /api/app/projects/{project_id}/behaviors/{behavior_id}
+      method: PATCH
+    delete:
+      path: /api/app/projects/{project_id}/behaviors/{behavior_id}
+      method: DELETE
+  # ---- settings singletons -------------------------------------------------
+  # Each settings singleton READ=GET base-path (response repointed to the synthetic
+  # {settings:string} MxpSettingsPassthrough in preprocess); WRITE=POST a DISTINCT
+  # /update sub-path that takes NO request body. The single `settings` field is
+  # ignored here and re-injected as a jsonencode passthrough in the CRUD step. The
+  # scope attribute (organization_id / project_id) comes from the path parameter.
+  twofactor_settings:
+    create:
+      path: /organizations/{organization_id}/twofactor/update
+      method: POST
+    read:
+      path: /organizations/{organization_id}/twofactor
+      method: GET
+    update:
+      path: /organizations/{organization_id}/twofactor/update
+      method: POST
+  org_session_settings:
+    create:
+      path: /organizations/{organization_id}/org-session-settings/update
+      method: POST
+    read:
+      path: /organizations/{organization_id}/org-session-settings
+      method: GET
+    update:
+      path: /organizations/{organization_id}/org-session-settings/update
+      method: POST
+  org_request_access_settings:
+    create:
+      path: /organizations/{organization_id}/org-request-access-settings/update
+      method: POST
+    read:
+      path: /organizations/{organization_id}/org-request-access-settings
+      method: GET
+    update:
+      path: /organizations/{organization_id}/org-request-access-settings/update
+      method: POST
+  spark_settings:
+    create:
+      path: /organizations/{organization_id}/update-spark-settings
+      method: POST
+    read:
+      path: /organizations/{organization_id}/spark-settings
+      method: GET
+    update:
+      path: /organizations/{organization_id}/update-spark-settings
+      method: POST
+
+data_sources:
+  custom_event:
+    schema:
+      ignores:
+        - custom_event.alternatives.valid_segfilter
+    read:
+      path: /api/app/custom_events/{project_id}/{customevent_id}
+      method: GET
+  service_account:
+    read:
+      path: /api/app/organizations/{organization_id}/service-accounts/{serviceaccount_id}
+      method: GET
+  agent_flow:
+    schema:
+      ignores:
+        - graph
+    read:
+      path: /api/app/projects/{project_id}/agent-flows/{agent_flow_id}
+      method: GET
+  custom_alert:
+    schema:
+      ignores:
+        - condition
+        - subscriptions
+    read:
+      path: /api/app/projects/{project_id}/alerts/custom/{custom_alert_id}
+      method: GET
+  annotation:
+    schema:
+      ignores:
+        - user
+        - tags
+    read:
+      path: /api/app/projects/{project_id}/annotations/{annotation_id}
+      method: GET
+  bookmark:
+    schema:
+      ignores:
+        - metadata
+        - params
+    read:
+      path: /api/app/projects/{project_id}/bookmarks/{bookmark_id}
+      method: GET
+  canvas:
+    read:
+      path: /api/app/projects/{project_id}/canvases/{metric_tree_id}
+      method: GET
+  cohort:
+    schema:
+      ignores:
+        - groups
+        - count
+    read:
+      path: /api/app/projects/{project_id}/cohorts/{cohort_id}
+      method: GET
+  connector:
+    schema:
+      ignores:
+        - category_properties
+        - connector_properties
+    read:
+      path: /api/app/projects/{project_id}/connectors/{connector_id}
+      method: GET
+  custom_role:
+    read:
+      path: /api/app/projects/{project_id}/custom-roles/{role_id}
+      method: GET
+  custom_property:
+    schema:
+      ignores:
+        - behavior
+        - composedProperties
+        - displayOptions
+    read:
+      path: /api/app/projects/{project_id}/custom_properties/{custom_property_id}
+      method: GET
+  email_digest:
+    schema:
+      ignores:
+        - slack_subscriptions
+    read:
+      path: /api/app/projects/{project_id}/dashboard-reports/email-digests/{email_digest_id}
+      method: GET
+  dashboard:
+    schema:
+      ignores:
+        - filters.propertyName
+        - rows.contents
+    read:
+      path: /api/app/projects/{project_id}/dashboards/{dashboard_id}
+      method: GET
+  experiment:
+    schema:
+      ignores:
+        - exposures_cache
+        - feature_flag
+        - results_cache
+        - settings
+        - metrics.definition
+        - metrics.filters
+    read:
+      path: /api/app/projects/{project_id}/experiments/{experiment_id}
+      method: GET
+  feature_flag:
+    schema:
+      ignores:
+        - content_environments
+        - ruleset.rollout.cohort_definition
+        - ruleset.rollout.runtime_evaluation_definition
+        - ruleset.rollout.runtime_evaluation_rule
+        - ruleset.rollout.runtime_event_rule
+        - ruleset.rollout.variant_override
+        - ruleset.test
+        - ruleset.variants.value
+    read:
+      path: /api/app/projects/{project_id}/feature-flags/{flag_id}
+      method: GET
+  heat_map_collection:
+    schema:
+      ignores:
+        - heat_maps
+    read:
+      path: /api/app/projects/{project_id}/heat-maps/collection/{heat_map_collection_id}
+      method: GET
+  heat_map:
+    schema:
+      ignores:
+        - goal
+        - goal_weight
+        - time_filter
+        - filters
+    read:
+      path: /api/app/projects/{project_id}/heat-maps/{heat_map_id}
+      method: GET
+  metric:
+    schema:
+      ignores:
+        - definition
+    read:
+      path: /api/app/projects/{project_id}/metrics/{metric_id}
+      method: GET
+  playlist:
+    schema:
+      ignores:
+        - filters
+        - time_filter
+    read:
+      path: /api/app/projects/{project_id}/playlists/{playlist_id}
+      method: GET
+  theme:
+    schema:
+      ignores:
+        - data
+    read:
+      path: /api/app/projects/{project_id}/themes/{theme_id}
+      method: GET
+  warehouse_source:
+    read:
+      path: /api/app/projects/{project_id}/warehouse-sources/sources/{source_id}
+      method: GET
+  rollup_project:
+    read:
+      path: /api/app/rollup_projects/{rollup_project_id}
+      method: GET
+  event_definition:
+    read:
+      path: /api/app/projects/{project_id}/event-definitions/{event_definition_id}
+      method: GET
+  workspace:
+    schema:
+      ignores:
+        - data_filters
+    read:
+      path: /api/app/projects/{project_id}/workspaces/{workspace_id}
+      method: GET
+  dataset:
+    read:
+      path: /api/app/projects/{project_id}/datasets/{dataset_id}
+      method: GET
+  # data-source-only (no DELETE route -> disconnect-as-delete; integrated_partial)
+  project_outgoing_integration:
+    schema:
+      ignores:
+        - settings
+    read:
+      path: /api/app/projects/{project_id}/integrations/outgoing/{project_outgoing_integration_id}
+      method: GET
+  # data-source-only (no DELETE route on the tag instance path; would orphan)
+  tag:
+    read:
+      path: /api/app/projects/{project_id}/data-definitions/tags/{tag_id}
+      method: GET
+  behavior:
+    schema:
+      ignores:
+        - definition
+        - behaviors
+    read:
+      path: /api/app/projects/{project_id}/behaviors/{behavior_id}
+      method: GET
+  # ---- settings singletons (data sources: READ base-path GET only) ---------
+  twofactor_settings:
+    read:
+      path: /organizations/{organization_id}/twofactor
+      method: GET
+  org_session_settings:
+    read:
+      path: /organizations/{organization_id}/org-session-settings
+      method: GET
+  org_request_access_settings:
+    read:
+      path: /organizations/{organization_id}/org-request-access-settings
+      method: GET
+  spark_settings:
+    read:
+      path: /organizations/{organization_id}/spark-settings
+      method: GET
