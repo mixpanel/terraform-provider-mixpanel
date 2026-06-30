@@ -881,8 +881,20 @@
             }
           },
           {
+            "name": "display_name",
+            "string": {
+              "computed_optional_required": "computed"
+            }
+          },
+          {
             "name": "example_value",
             "string": {
+              "computed_optional_required": "computed"
+            }
+          },
+          {
+            "name": "hidden",
+            "bool": {
               "computed_optional_required": "computed"
             }
           },
@@ -980,8 +992,29 @@
             }
           },
           {
+            "name": "sensitive",
+            "bool": {
+              "computed_optional_required": "computed"
+            }
+          },
+          {
+            "name": "tags",
+            "list": {
+              "computed_optional_required": "computed",
+              "element_type": {
+                "string": {}
+              }
+            }
+          },
+          {
             "name": "user",
             "int64": {
+              "computed_optional_required": "computed"
+            }
+          },
+          {
+            "name": "verified",
+            "bool": {
               "computed_optional_required": "computed"
             }
           }
@@ -1451,6 +1484,12 @@
             }
           },
           {
+            "name": "example_value",
+            "string": {
+              "computed_optional_required": "computed"
+            }
+          },
+          {
             "name": "hidden",
             "bool": {
               "computed_optional_required": "computed"
@@ -1499,6 +1538,12 @@
               "element_type": {
                 "string": {}
               }
+            }
+          },
+          {
+            "name": "sensitive",
+            "bool": {
+              "computed_optional_required": "computed"
             }
           },
           {
@@ -3293,6 +3338,34 @@
       }
     },
     {
+      "name": "schema_graph",
+      "schema": {
+        "attributes": [
+          {
+            "name": "project_id",
+            "int64": {
+              "computed_optional_required": "required",
+              "description": "Project ID to retrieve schema graph for"
+            }
+          },
+          {
+            "name": "include_density",
+            "bool": {
+              "computed_optional_required": "computed_optional",
+              "description": "Include density metrics in the schema graph response"
+            }
+          },
+          {
+            "name": "events",
+            "string": {
+              "computed_optional_required": "computed",
+              "description": "JSON-encoded array of events with their properties and density_local metrics"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "workspace",
       "schema": {
         "attributes": [
@@ -4641,6 +4714,12 @@
             }
           },
           {
+            "name": "display_name",
+            "string": {
+              "computed_optional_required": "computed_optional"
+            }
+          },
+          {
             "name": "example_value",
             "string": {
               "computed_optional_required": "computed_optional"
@@ -4649,6 +4728,12 @@
           {
             "name": "global_access_type",
             "string": {
+              "computed_optional_required": "computed_optional"
+            }
+          },
+          {
+            "name": "hidden",
+            "bool": {
               "computed_optional_required": "computed_optional"
             }
           },
@@ -4673,6 +4758,27 @@
           {
             "name": "resource_type",
             "string": {
+              "computed_optional_required": "computed_optional"
+            }
+          },
+          {
+            "name": "sensitive",
+            "bool": {
+              "computed_optional_required": "computed_optional"
+            }
+          },
+          {
+            "name": "tags",
+            "list": {
+              "computed_optional_required": "computed_optional",
+              "element_type": {
+                "string": {}
+              }
+            }
+          },
+          {
+            "name": "verified",
+            "bool": {
               "computed_optional_required": "computed_optional"
             }
           },
@@ -5653,13 +5759,13 @@
           {
             "name": "description",
             "string": {
-              "computed_optional_required": "computed"
+              "computed_optional_required": "computed_optional"
             }
           },
           {
             "name": "display_name",
             "string": {
-              "computed_optional_required": "computed"
+              "computed_optional_required": "computed_optional"
             }
           },
           {
@@ -5669,9 +5775,15 @@
             }
           },
           {
+            "name": "example_value",
+            "string": {
+              "computed_optional_required": "computed_optional"
+            }
+          },
+          {
             "name": "hidden",
             "bool": {
-              "computed_optional_required": "computed"
+              "computed_optional_required": "computed_optional"
             }
           },
           {
@@ -5720,6 +5832,12 @@
             }
           },
           {
+            "name": "sensitive",
+            "bool": {
+              "computed_optional_required": "computed_optional"
+            }
+          },
+          {
             "name": "status",
             "string": {
               "computed_optional_required": "computed"
@@ -5728,7 +5846,7 @@
           {
             "name": "tags",
             "list": {
-              "computed_optional_required": "computed",
+              "computed_optional_required": "computed_optional",
               "element_type": {
                 "string": {}
               }
@@ -5746,7 +5864,7 @@
           {
             "name": "verified",
             "bool": {
-              "computed_optional_required": "computed"
+              "computed_optional_required": "computed_optional"
             }
           },
           {
@@ -6784,6 +6902,55 @@
       }
     },
     {
+      "name": "lexicon_tag",
+      "schema": {
+        "attributes": [
+          {
+            "name": "project_id",
+            "int64": {
+              "computed_optional_required": "required",
+              "description": "The project ID"
+            }
+          },
+          {
+            "name": "tag_id",
+            "int64": {
+              "computed_optional_required": "required",
+              "description": "The tag ID (path parameter)"
+            }
+          },
+          {
+            "name": "color",
+            "string": {
+              "computed_optional_required": "optional",
+              "description": "Color code for the tag (optional)"
+            }
+          },
+          {
+            "name": "description",
+            "string": {
+              "computed_optional_required": "optional",
+              "description": "Description of the tag's purpose (optional)"
+            }
+          },
+          {
+            "name": "id",
+            "int64": {
+              "computed_optional_required": "computed",
+              "description": "The unique tag identifier"
+            }
+          },
+          {
+            "name": "name",
+            "string": {
+              "computed_optional_required": "required",
+              "description": "The tag name"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "metric",
       "schema": {
         "attributes": [
@@ -6986,6 +7153,239 @@
             "name": "metric_id",
             "int64": {
               "computed_optional_required": "computed_optional"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "formula",
+      "schema": {
+        "attributes": [
+          {
+            "name": "contacts",
+            "list": {
+              "computed_optional_required": "computed_optional",
+              "element_type": {
+                "string": {}
+              }
+            }
+          },
+          {
+            "name": "description",
+            "string": {
+              "computed_optional_required": "computed_optional"
+            }
+          },
+          {
+            "name": "id",
+            "int64": {
+              "computed_optional_required": "computed_optional"
+            }
+          },
+          {
+            "name": "name",
+            "string": {
+              "computed_optional_required": "required"
+            }
+          },
+          {
+            "name": "type",
+            "string": {
+              "computed_optional_required": "required",
+              "validators": [
+                {
+                  "custom": {
+                    "imports": [
+                      {
+                        "path": "github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+                      }
+                    ],
+                    "schema_definition": "stringvalidator.OneOf(\"formula\")"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "verified",
+            "bool": {
+              "computed_optional_required": "computed_optional"
+            }
+          },
+          {
+            "name": "definition",
+            "string": {
+              "computed_optional_required": "required",
+              "description": "JSON-encoded formula definition containing 'definition' (expression string) and 'referencedMetrics' (array of metric references). The referenced metrics must map to contiguous variables A, B, C... in the order they appear.",
+              "validators": [
+                {
+                  "custom": {
+                    "imports": [
+                      {
+                        "path": "github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+                      }
+                    ],
+                    "schema_definition": "stringvalidator.LengthAtLeast(1)"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "owned_by",
+            "single_nested": {
+              "computed_optional_required": "computed_optional",
+              "attributes": [
+                {
+                  "name": "email",
+                  "string": {
+                    "computed_optional_required": "required"
+                  }
+                },
+                {
+                  "name": "id",
+                  "int64": {
+                    "computed_optional_required": "required"
+                  }
+                },
+                {
+                  "name": "name",
+                  "string": {
+                    "computed_optional_required": "required"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "allow_staff_override",
+            "bool": {
+              "computed_optional_required": "computed"
+            }
+          },
+          {
+            "name": "can_share",
+            "bool": {
+              "computed_optional_required": "computed"
+            }
+          },
+          {
+            "name": "can_update_basic",
+            "bool": {
+              "computed_optional_required": "computed"
+            }
+          },
+          {
+            "name": "can_update_restricted",
+            "bool": {
+              "computed_optional_required": "computed"
+            }
+          },
+          {
+            "name": "can_update_visibility",
+            "bool": {
+              "computed_optional_required": "computed"
+            }
+          },
+          {
+            "name": "can_view",
+            "bool": {
+              "computed_optional_required": "computed"
+            }
+          },
+          {
+            "name": "created",
+            "string": {
+              "computed_optional_required": "computed"
+            }
+          },
+          {
+            "name": "created_by",
+            "single_nested": {
+              "computed_optional_required": "computed",
+              "attributes": [
+                {
+                  "name": "email",
+                  "string": {
+                    "computed_optional_required": "computed"
+                  }
+                },
+                {
+                  "name": "id",
+                  "int64": {
+                    "computed_optional_required": "computed"
+                  }
+                },
+                {
+                  "name": "name",
+                  "string": {
+                    "computed_optional_required": "computed"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "is_locked",
+            "bool": {
+              "computed_optional_required": "computed"
+            }
+          },
+          {
+            "name": "is_superadmin",
+            "bool": {
+              "computed_optional_required": "computed"
+            }
+          },
+          {
+            "name": "is_visible",
+            "bool": {
+              "computed_optional_required": "computed"
+            }
+          },
+          {
+            "name": "last_verified",
+            "string": {
+              "computed_optional_required": "computed"
+            }
+          },
+          {
+            "name": "last_verified_by",
+            "single_nested": {
+              "computed_optional_required": "computed",
+              "attributes": [
+                {
+                  "name": "email",
+                  "string": {
+                    "computed_optional_required": "computed"
+                  }
+                },
+                {
+                  "name": "id",
+                  "int64": {
+                    "computed_optional_required": "computed"
+                  }
+                },
+                {
+                  "name": "name",
+                  "string": {
+                    "computed_optional_required": "computed"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "modified",
+            "string": {
+              "computed_optional_required": "computed"
+            }
+          },
+          {
+            "name": "project_id",
+            "int64": {
+              "computed_optional_required": "required"
             }
           }
         ]

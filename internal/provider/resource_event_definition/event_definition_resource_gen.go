@@ -64,9 +64,11 @@ func EventDefinitionResourceSchema(ctx context.Context) schema.Schema {
 				Required: true,
 			},
 			"description": schema.StringAttribute{
+				Optional: true,
 				Computed: true,
 			},
 			"display_name": schema.StringAttribute{
+				Optional: true,
 				Computed: true,
 			},
 			"dropped": schema.BoolAttribute{
@@ -76,7 +78,12 @@ func EventDefinitionResourceSchema(ctx context.Context) schema.Schema {
 				Optional: true,
 				Computed: true,
 			},
+			"example_value": schema.StringAttribute{
+				Optional: true,
+				Computed: true,
+			},
 			"hidden": schema.BoolAttribute{
+				Optional: true,
 				Computed: true,
 			},
 			"id": schema.Int64Attribute{
@@ -105,11 +112,16 @@ func EventDefinitionResourceSchema(ctx context.Context) schema.Schema {
 				Optional: true,
 				Computed: true,
 			},
+			"sensitive": schema.BoolAttribute{
+				Optional: true,
+				Computed: true,
+			},
 			"status": schema.StringAttribute{
 				Computed: true,
 			},
 			"tags": schema.ListAttribute{
 				ElementType: types.StringType,
+				Optional:    true,
 				Computed:    true,
 			},
 			"team_contacts": schema.ListAttribute{
@@ -117,6 +129,7 @@ func EventDefinitionResourceSchema(ctx context.Context) schema.Schema {
 				Computed:    true,
 			},
 			"verified": schema.BoolAttribute{
+				Optional: true,
 				Computed: true,
 			},
 		},
@@ -133,6 +146,7 @@ type EventDefinitionModel struct {
 	DisplayName              types.String `tfsdk:"display_name"`
 	Dropped                  types.Bool   `tfsdk:"dropped"`
 	EventDefinitionId        types.Int64  `tfsdk:"event_definition_id"`
+	ExampleValue             types.String `tfsdk:"example_value"`
 	Hidden                   types.Bool   `tfsdk:"hidden"`
 	Id                       types.Int64  `tfsdk:"id"`
 	LastModified             types.String `tfsdk:"last_modified"`
@@ -142,6 +156,7 @@ type EventDefinitionModel struct {
 	Name                     types.String `tfsdk:"name"`
 	Platforms                types.List   `tfsdk:"platforms"`
 	ProjectId                types.Int64  `tfsdk:"project_id"`
+	Sensitive                types.Bool   `tfsdk:"sensitive"`
 	Status                   types.String `tfsdk:"status"`
 	Tags                     types.List   `tfsdk:"tags"`
 	TeamContacts             types.List   `tfsdk:"team_contacts"`

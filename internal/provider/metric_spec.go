@@ -14,7 +14,7 @@ func MetricAttrSpec() client.AttrSpec {
 		PathParamAttrs:    map[string]bool{"metric_id": true},
 		JSONEncodeAttrs:   map[string]bool{"definition": true},
 		JSONStringAttrs:   map[string]bool{},
-		JSONEncodeWireKey: map[string]string{"owned_by": "owned_by"},
+		JSONEncodeWireKey: map[string]string{},
 		OutputOnlyAttrs:   map[string]bool{"allow_staff_override": true, "can_share": true, "can_update_basic": true, "can_update_restricted": true, "can_update_visibility": true, "can_view": true, "created": true, "created_by": true, "is_locked": true, "is_superadmin": true, "is_visible": true, "last_verified": true, "last_verified_by": true, "modified": true},
 		SpreadAttrs:       map[string]bool{},
 	}

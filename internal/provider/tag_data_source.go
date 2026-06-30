@@ -60,16 +60,14 @@ func (d *TagDataSource) Configure(ctx context.Context, req datasource.ConfigureR
 
 func (d *TagDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	spec := TagAttrSpec()
-	projectID := d.client.ProjectID("")
-	if pid, perr := stringAttrFromRaw(req.Config.Raw, "project_id"); perr == nil && pid != "" {
-		projectID = d.client.ProjectID(pid)
-	}
-	id, err := stringAttrFromRaw(req.Config.Raw, "tag_id")
+	projectID := ""
+	_ = req.Config.Raw
+	id, err := stringAttrFromRaw(req.Config.Raw, "id")
 	if err != nil {
 		resp.Diagnostics.AddError("Reading tag id", err.Error())
 		return
 	}
-	path := strings.NewReplacer("{project_id}", projectID, "{tag_id}", id).Replace("/api/app/projects/{project_id}/data-definitions/tags/{tag_id}")
+	path := strings.NewReplacer("{project_id}", projectID, "{id}", id).Replace("")
 	respBody, err := d.client.Do(ctx, "GET", path, nil)
 	if err != nil {
 		resp.Diagnostics.AddError("Reading tag", err.Error())
@@ -82,11 +80,9 @@ func (d *TagDataSource) Read(ctx context.Context, req datasource.ReadRequest, re
 	}
 	wire = unwrapResultsMap(wire, false)
 	extras := map[string]any{
-		"tag_id": id,
+		"id": id,
 	}
-	if projectID != "" {
-		extras["project_id"] = projectID
-	}
+	_ = projectID
 	schemaType := schemaTypeOfDataSource(ctx, resp.State)
 	val, err := client.RawFromWire(schemaType, wire, extras, spec)
 	if err != nil {

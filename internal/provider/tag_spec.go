@@ -11,7 +11,7 @@ func TagAttrSpec() client.AttrSpec {
 	return client.AttrSpec{
 		IDAttr:            "id",
 		ProjectIDAttr:     "project_id",
-		PathParamAttrs:    map[string]bool{"tag_id": true},
+		PathParamAttrs:    map[string]bool{},
 		JSONEncodeAttrs:   map[string]bool{},
 		JSONStringAttrs:   map[string]bool{},
 		JSONEncodeWireKey: map[string]string{},

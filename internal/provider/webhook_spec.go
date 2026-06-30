@@ -14,7 +14,7 @@ func WebhookAttrSpec() client.AttrSpec {
 		PathParamAttrs:    map[string]bool{"webhook_id": true},
 		JSONEncodeAttrs:   map[string]bool{},
 		JSONStringAttrs:   map[string]bool{},
-		JSONEncodeWireKey: map[string]string{"auth_type": "auth_type", "creator_id": "creator_id", "creator_name": "creator_name", "is_enabled": "is_enabled"},
+		JSONEncodeWireKey: map[string]string{},
 		OutputOnlyAttrs:   map[string]bool{"created": true, "creator_id": true, "creator_name": true, "is_enabled": true, "modified": true},
 		SpreadAttrs:       map[string]bool{},
 	}

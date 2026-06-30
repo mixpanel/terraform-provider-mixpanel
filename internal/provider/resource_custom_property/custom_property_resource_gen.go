@@ -34,11 +34,19 @@ func CustomPropertyResourceSchema(ctx context.Context) schema.Schema {
 				Optional: true,
 				Computed: true,
 			},
+			"display_name": schema.StringAttribute{
+				Optional: true,
+				Computed: true,
+			},
 			"example_value": schema.StringAttribute{
 				Optional: true,
 				Computed: true,
 			},
 			"global_access_type": schema.StringAttribute{
+				Optional: true,
+				Computed: true,
+			},
+			"hidden": schema.BoolAttribute{
 				Optional: true,
 				Computed: true,
 			},
@@ -95,7 +103,20 @@ func CustomPropertyResourceSchema(ctx context.Context) schema.Schema {
 				Optional: true,
 				Computed: true,
 			},
+			"sensitive": schema.BoolAttribute{
+				Optional: true,
+				Computed: true,
+			},
+			"tags": schema.ListAttribute{
+				ElementType: types.StringType,
+				Optional:    true,
+				Computed:    true,
+			},
 			"user": schema.Int64Attribute{
+				Computed: true,
+			},
+			"verified": schema.BoolAttribute{
+				Optional: true,
 				Computed: true,
 			},
 		},
@@ -109,8 +130,10 @@ type CustomPropertyModel struct {
 	DataGroupId                  types.String `tfsdk:"data_group_id"`
 	Description                  types.String `tfsdk:"description"`
 	DisplayFormula               types.String `tfsdk:"display_formula"`
+	DisplayName                  types.String `tfsdk:"display_name"`
 	ExampleValue                 types.String `tfsdk:"example_value"`
 	GlobalAccessType             types.String `tfsdk:"global_access_type"`
+	Hidden                       types.Bool   `tfsdk:"hidden"`
 	IsLocked                     types.Bool   `tfsdk:"is_locked"`
 	IsSessionScoped              types.Bool   `tfsdk:"is_session_scoped"`
 	IsVisible                    types.Bool   `tfsdk:"is_visible"`
@@ -126,5 +149,8 @@ type CustomPropertyModel struct {
 	ReferencedRawEventProperties types.List   `tfsdk:"referenced_raw_event_properties"`
 	ReferencesBorrowedProperty   types.Bool   `tfsdk:"references_borrowed_property"`
 	ResourceType                 types.String `tfsdk:"resource_type"`
+	Sensitive                    types.Bool   `tfsdk:"sensitive"`
+	Tags                         types.List   `tfsdk:"tags"`
 	User                         types.Int64  `tfsdk:"user"`
+	Verified                     types.Bool   `tfsdk:"verified"`
 }

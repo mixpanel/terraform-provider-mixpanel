@@ -133,6 +133,18 @@ OVERRIDES = {
         "project_scoped": True,
         "enveloped": True,
     },
+    # lexicon_tag (data-definitions tags) has NO DELETE endpoint in the API (would 405).
+    # Mark it as singleton-style to generate a no-op Delete that removes from state only,
+    # orphaning the tag on the server - acceptable for metadata. Still supports create/update/read.
+    "lexicon_tag": {
+        "collection": "/api/app/projects/{project_id}/data-definitions/tags",
+        "instance": "/api/app/projects/{project_id}/data-definitions/tags/{tag_id}",
+        "id_param": "tag_id",
+        "update": "patch",
+        "delete": None,  # No DELETE endpoint - orphan on destroy
+        "project_scoped": True,
+        "enveloped": True,
+    },
     # custom_property's CustomPropertyCreateRequest / CustomPropertyResponse use
     # camelCase wire keys (dataGroupId, displayFormula, ...), but the bridge writes
     # wire keys VERBATIM (AttrSpec.wireKey returns the snake_case TF attr name unless

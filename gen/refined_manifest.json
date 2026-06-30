@@ -230,7 +230,7 @@
     {
       "keep": true,
       "short": "tags",
-      "resource_name": "tag",
+      "resource_name": "lexicon_tag",
       "id_attr": "id",
       "collection": "/api/app/projects/{project_id}/data-definitions/tags",
       "instance": "/api/app/projects/{project_id}/data-definitions/tags/{tag_id}",
@@ -241,7 +241,7 @@
       "jsonencode_fields": [],
       "collapse_fields": [],
       "drop_reason": "",
-      "notes": "DATA-SOURCE-ONLY (integrated_partial). Confirmed against merged spec: the tag instance path /api/app/projects/{project_id}/data-definitions/tags/{tag_id} exposes only GET/POST/PATCH -- there is NO DELETE route (would 405). A create-able tag resource would therefore produce orphans Terraform can never destroy, so tag is registered ONLY as a singular data source (read instance GET, read_schema TagResult, integer 'id'). create_req_schema CrudTagRequest retained for reference but no resource is generated. No oneOf/dynamic props -> no jsonencode_fields."
+      "notes": "PROMOTED TO RESOURCE (P1 gap report requirement). Lexicon tag resource for categorizing events and properties in the schema governance system. API exposes GET/POST/PATCH but NO DELETE (would 405). delete=null means Terraform will remove from state without API call, orphaning the tag - this is acceptable for metadata tags. Used in event_definition.tags and custom_property.tags arrays. Fields: id (computed integer), name (required string), description (optional string), color (optional string). Renamed from 'tag' to 'lexicon_tag' to clarify purpose and avoid generic naming."
     },
     {
       "short": "experiments",
@@ -347,6 +347,27 @@
       "concrete_read_schema": "BehaviorMetric",
       "drop_reason": "",
       "notes": "Real user-manageable CRUD entity. POST create_metric(MetricsRequest), GET list+entry, PATCH update_metric(MetricPatch instance), DELETE delete_metric(instance). read_schema typed (Metric entity), not untyped dict. Metric is discriminated oneOf (BehaviorMetric/FormulaMetric, propertyName=type); both variants require id:integer so id_attr=id (path param metric_id maps to entity id). create_req_schema=MetricsRequest (oneOf BehaviorMetricRequest/FormulaMetricRequest). PROMOTED data-source->resource: tfplugingen-openapi cannot model the oneOf roots (MetricsRequest / Metric) -> 'unsupported multi-type, attribute cannot be created'. preprocess_spec repoints the metric create body to concrete_create_schema (BehaviorMetricRequest) and all metric 2xx responses to concrete_read_schema (BehaviorMetric); the two variants are field-identical except for `definition` (which is ignored/jsonencode'd), so the collapsed concrete schema is lossless. The wire response is enveloped + a single-entry id->object map (results_map), handled in crudgen. jsonencode: 'definition' is variant-specific complex nested object ($ref BehaviorMetricDefinition/FormulaMetricDefinition) -> dynamic. No collapse_fields: all anyOf are scalar+null (nullability only). owned_by/created_by/last_verified_by are typed single User refs."
+    },
+    {
+      "keep": true,
+      "short": "formulas",
+      "resource_name": "formula",
+      "id_attr": "id",
+      "read_schema": "BaseOkResponseModel_Dict_str__Metric__",
+      "create_req_schema": "MetricsRequest",
+      "update": "patch",
+      "delete": "delete",
+      "collection": "/api/app/projects/{project_id}/metrics",
+      "instance": "/api/app/projects/{project_id}/metrics/{metric_id}",
+      "jsonencode_fields": [
+        "definition"
+      ],
+      "collapse_fields": [],
+      "concrete_create_schema": "FormulaMetricRequest",
+      "concrete_read_schema": "FormulaMetric",
+      "bulk_delete_only": true,
+      "drop_reason": "",
+      "notes": "Formula metric CRUD entity. Shares /metrics endpoint with behavior metrics but uses FormulaMetric discriminator type. POST create_metric(FormulaMetricRequest with type='formula'), GET/PATCH/DELETE on instance. Discriminated from BehaviorMetric by type field. create_req_schema=MetricsRequest (oneOf wrapper), concrete schema is FormulaMetricRequest. read_schema BaseOkResponseModel_Dict_str__Metric__ envelope, concrete schema is FormulaMetric. id_attr=id. jsonencode: 'definition' is FormulaMetricDefinition (nested formula expression + referencedMetrics). bulk_delete_only: single-item DELETE returns 501, must use bulk DELETE endpoint. Custom validation required: referencedMetrics must map to contiguous variables A, B, C... in order."
     },
     {
       "short": "playlists",
@@ -551,19 +572,21 @@
     },
     {
       "keep": true,
-      "short": "tags",
-      "resource_name": "tag",
-      "id_attr": "id",
-      "collection": "/api/app/projects/{project_id}/data-definitions/tags",
-      "instance": "/api/app/projects/{project_id}/data-definitions/tags/{tag_id}",
-      "read_schema": "TagResult",
-      "create_req_schema": "CrudTagRequest",
-      "update": "patch",
+      "short": "schema",
+      "resource_name": "schema_graph",
+      "id_attr": "project_id",
+      "collection": "/api/app/projects/{project_id}/data-definitions/schema",
+      "instance": "/api/app/projects/{project_id}/data-definitions/schema",
+      "read_schema": "SchemaResult",
+      "create_req_schema": null,
+      "update": null,
       "delete": null,
-      "jsonencode_fields": [],
+      "jsonencode_fields": [
+        "events"
+      ],
       "collapse_fields": [],
       "drop_reason": "",
-      "notes": "DATA-SOURCE-ONLY (integrated_partial). Confirmed against merged spec: the tag instance path /api/app/projects/{project_id}/data-definitions/tags/{tag_id} exposes only GET/POST/PATCH -- there is NO DELETE route (would 405). A create-able tag resource would therefore produce orphans Terraform can never destroy, so tag is registered ONLY as a singular data source (read instance GET, read_schema TagResult, integer 'id'). create_req_schema CrudTagRequest retained for reference but no resource is generated. No oneOf/dynamic props -> no jsonencode_fields."
+      "notes": "DATA-SOURCE-ONLY. Read-only project schema graph data source. GET /data-definitions/schema returns SchemaResult (dynamic object containing events array with density_local metrics). No create/update/delete operations - purely read-only for visualizing unified event-property graph with density metrics. Used for schema governance and drift-checking. id_attr=project_id since this is a project-scoped singleton. jsonencode 'events' because SchemaResult is additionalProperties:true dynamic object."
     },
     {
       "keep": true,

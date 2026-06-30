@@ -14,7 +14,7 @@ func ServiceAccountAttrSpec() client.AttrSpec {
 		PathParamAttrs:    map[string]bool{"serviceaccount_id": true},
 		JSONEncodeAttrs:   map[string]bool{},
 		JSONStringAttrs:   map[string]bool{},
-		JSONEncodeWireKey: map[string]string{"creator_email": "creator_email", "creator_name": "creator_name", "last_used": "last_used"},
+		JSONEncodeWireKey: map[string]string{},
 		OutputOnlyAttrs:   map[string]bool{"created": true, "creator": true, "creator_email": true, "creator_name": true, "expires": true, "last_used": true, "token": true, "user": true},
 		SpreadAttrs:       map[string]bool{},
 	}

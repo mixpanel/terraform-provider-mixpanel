@@ -14,7 +14,7 @@ func CustomAlertAttrSpec() client.AttrSpec {
 		PathParamAttrs:    map[string]bool{"custom_alert_id": true},
 		JSONEncodeAttrs:   map[string]bool{"condition": true, "subscriptions": true},
 		JSONStringAttrs:   map[string]bool{},
-		JSONEncodeWireKey: map[string]string{"bookmark_id": "bookmark_id", "notification_windows": "notification_windows"},
+		JSONEncodeWireKey: map[string]string{},
 		OutputOnlyAttrs:   map[string]bool{},
 		SpreadAttrs:       map[string]bool{},
 	}
