@@ -91,6 +91,7 @@ func providerDataSources() []func() datasource.DataSource {
 		// Plural "list" data sources (GREEN-10): bulk id + composite import-id discovery.
 		NewAgentFlowListDataSource,
 		NewAnnotationListDataSource,
+		NewCohortListDataSource,
 		NewCustomAlertListDataSource,
 		NewCustomEventListDataSource,
 		NewCustomPropertyListDataSource,

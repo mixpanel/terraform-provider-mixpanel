@@ -112,6 +112,7 @@ each of the following (the "GREEN-10"):
 | ---------------------------- | ------------------------ |
 | `mixpanel_agent_flows`       | `mixpanel_agent_flow`    |
 | `mixpanel_annotations`       | `mixpanel_annotation`    |
+| `mixpanel_cohorts`           | `mixpanel_cohort`        |
 | `mixpanel_custom_alerts`     | `mixpanel_custom_alert`  |
 | `mixpanel_custom_propertys`  | `mixpanel_custom_property`|
 | `mixpanel_custom_roles`      | `mixpanel_custom_role`   |
