@@ -1,4 +1,4 @@
-# Terraform Provider for Mixpanel
+# Mixpanel State
 
 A Terraform provider for managing [Mixpanel](https://mixpanel.com) resources via the
 Mixpanel application API. The provider is generated from Mixpanel's OpenAPI specification
