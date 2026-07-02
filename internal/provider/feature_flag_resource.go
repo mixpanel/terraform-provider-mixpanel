@@ -5,16 +5,47 @@
 // project share via the shared-entities API and Read refreshes it. Entities a
 // service account creates are otherwise invisible to human users. Re-apply
 // these edits if regenerating this file.
+//
+// HAND-EDITED EXCEPTION: lifecycle verbs + workspace fallback.
+//
+//  1. `desired_state` attribute ("enabled" | "disabled" | "archived", the
+//     webapp FeatureFlagStatus vocabulary). Enable/disable travel in the
+//     status field of the regular PUT payload; "archived" is a soft delete
+//     driven by POST {flag_id}/archive (restore = DELETE {flag_id}/archive)
+//     and surfaces as a non-null `deleted` timestamp on GET while `status`
+//     keeps its pre-archive value (live-verified 2026-07-02). The server
+//     refuses to archive or hard-delete an enabled flag
+//     (CannotDeleteEnabledFlag, live-verified), so transitions into
+//     "archived" and Delete disable the flag first.
+//
+//  2. Workspace 404 fallback: the feature-flag urlconf is only usable on the
+//     workspace mount (/projects/{pid}/workspaces/{ws}/feature-flags; the
+//     project mount 400s with "Workspace is required"), and that mount is
+//     membership-gated: require_workspace_membership returns 404 BEFORE the
+//     view runs when the caller is not a member of the workspace in the path
+//     (live-verified: the tf-acc service account 404s on global workspace 75
+//     of project 3 but succeeds on default workspace 79). Every call
+//     therefore retries across candidate workspaces (global > default >
+//     first), and a 404 is only treated as "flag gone" when it came from a
+//     workspace the caller can access (probed via the collection GET).
+//
+// Re-apply these edits if regenerating this file.
 
 package provider
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
@@ -27,6 +58,7 @@ var (
 	_ resource.Resource                = (*FeatureFlagResource)(nil)
 	_ resource.ResourceWithConfigure   = (*FeatureFlagResource)(nil)
 	_ resource.ResourceWithImportState = (*FeatureFlagResource)(nil)
+	_ resource.ResourceWithModifyPlan  = (*FeatureFlagResource)(nil)
 )
 
 // keep the generated schema package and schema builder imported.
@@ -35,6 +67,15 @@ var _ = schema.StringAttribute{}
 // keep the types package imported (used by nested schema overrides).
 var _ = types.NumberType
 
+// Feature-flag lifecycle states (the webapp FeatureFlagStatus vocabulary).
+// "enabled"/"disabled" are the wire `status` values; "archived" is the
+// soft-deleted state reached via the archive verb (non-null `deleted`).
+const (
+	flagStateEnabled  = "enabled"
+	flagStateDisabled = "disabled"
+	flagStateArchived = "archived"
+)
+
 // NewFeatureFlagResource constructs the feature_flag resource.
 func NewFeatureFlagResource() resource.Resource {
 	return &FeatureFlagResource{}
@@ -42,8 +83,9 @@ func NewFeatureFlagResource() resource.Resource {
 
 type FeatureFlagResource struct {
 	client *client.Client
-	// Task #11: Use thread-safe WorkspacePathBuilder instead of unsafe map cache.
-	workspacePathBuilder *client.WorkspacePathBuilder
+	// wsCache remembers, per project, the workspace that last answered a
+	// feature-flag call so the fallback loop tries it first.
+	wsCache *flagWorkspaceCache
 }
 
 func (r *FeatureFlagResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -86,6 +128,20 @@ func (r *FeatureFlagResource) Schema(ctx context.Context, req resource.SchemaReq
 			},
 		},
 	}
+	s.Attributes["desired_state"] = schema.StringAttribute{
+		Optional: true,
+		Computed: true,
+		Validators: []validator.String{
+			stringvalidator.OneOf(flagStateEnabled, flagStateDisabled, flagStateArchived),
+		},
+		MarkdownDescription: "Lifecycle state to drive the flag to: `enabled`, `disabled`, or " +
+			"`archived` (Mixpanel's own status vocabulary). Enable/disable are applied through " +
+			"the flag `status` field on the regular update; `archived` soft-deletes the flag via " +
+			"the archive endpoint (the provider disables an enabled flag first, since the API " +
+			"refuses to archive an enabled flag) and leaving `archived` restores it. When unset, " +
+			"it tracks the server-side state. Conflicts with an explicitly set `status` unless " +
+			"the two agree.",
+	}
 	s.Attributes[shareAttrName] = shareWithProjectAttribute()
 	stabilizeComputed(s.Attributes)
 	resp.Schema = s
@@ -104,7 +160,37 @@ func (r *FeatureFlagResource) Configure(ctx context.Context, req resource.Config
 		return
 	}
 	r.client = c
-	r.workspacePathBuilder = client.NewWorkspacePathBuilder(c)
+	r.wsCache = newFlagWorkspaceCache()
+}
+
+// ModifyPlan marks the server-driven lifecycle attributes unknown when a
+// lifecycle transition is planned, so the post-apply values (refreshed from
+// the API after the verb sequence) do not violate Terraform's "planned value
+// must equal applied value" contract.
+func (r *FeatureFlagResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
+		return // create or destroy: computed attrs are already unknown / going away
+	}
+	planDesired, _ := stringAttrFromRaw(req.Plan.Raw, "desired_state")
+	stateDesired, _ := stringAttrFromRaw(req.State.Raw, "desired_state")
+	planStatus, _ := stringAttrFromRaw(req.Plan.Raw, "status")
+	stateStatus, _ := stringAttrFromRaw(req.State.Raw, "status")
+	cfgStatus, _ := stringAttrFromRaw(req.Config.Raw, "status")
+	cfgDesired, _ := stringAttrFromRaw(req.Config.Raw, "desired_state")
+	if planDesired != stateDesired {
+		// A transition will run; status / deleted / enabled_at are decided by
+		// the server. Do not override an attribute pinned in configuration
+		// (conflict validation in Create/Update guarantees agreement).
+		if cfgStatus == "" {
+			resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("status"), types.StringUnknown())...)
+		}
+		resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("deleted"), types.StringUnknown())...)
+		resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("enabled_at"), types.StringUnknown())...)
+	} else if planStatus != stateStatus && cfgDesired == "" {
+		// Legacy path: `status` changed directly; desired_state follows it.
+		resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("desired_state"), types.StringUnknown())...)
+		resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("enabled_at"), types.StringUnknown())...)
+	}
 }
 
 // projectID resolves the project from the feature_flag project_id attribute (if any)
@@ -117,31 +203,214 @@ func (r *FeatureFlagResource) projectID(ctx context.Context, raw tftypes.Value) 
 	return r.client.ProjectID(""), nil
 }
 
-// collectionPath returns the workspace-scoped path for feature flags.
-// Task #11: Use thread-safe WorkspacePathBuilder to avoid data race.
-func (r *FeatureFlagResource) collectionPath(ctx context.Context, projectID string) (string, error) {
-	workspaceID, err := r.workspacePathBuilder.WorkspaceID(ctx, projectID)
-	if err != nil {
-		return "", fmt.Errorf("resolving workspace for project %s: %w", projectID, err)
-	}
-	return strings.NewReplacer(
-		"{project_id}", projectID,
-		"{workspace_id}", workspaceID,
-	).Replace("/api/app/projects/{project_id}/workspaces/{workspace_id}/feature-flags"), nil
+// ---------------------------------------------------------------------------
+// Workspace fallback plumbing (shared with the feature_flag data sources).
+// ---------------------------------------------------------------------------
+
+// errNoAccessibleFlagWorkspace reports that every candidate workspace mount
+// answered 404, i.e. the service account is not a member of any of them. This
+// is distinct from an ordinary 404 (entity gone on an accessible workspace):
+// Read must surface it as an error, not remove the resource from state.
+type errNoAccessibleFlagWorkspace struct {
+	projectID string
+	tried     []string
 }
 
-// instancePath returns the workspace-scoped path for a specific feature flag.
-// Task #11: Use thread-safe WorkspacePathBuilder to avoid data race.
-func (r *FeatureFlagResource) instancePath(ctx context.Context, projectID, id string) (string, error) {
-	workspaceID, err := r.workspacePathBuilder.WorkspaceID(ctx, projectID)
-	if err != nil {
-		return "", fmt.Errorf("resolving workspace for project %s: %w", projectID, err)
+func (e *errNoAccessibleFlagWorkspace) Error() string {
+	return fmt.Sprintf(
+		"no accessible workspace for project %s: the feature-flag API lives on the workspace mount, "+
+			"which is membership-gated and returns 404 for non-members (tried workspace ids: %s). "+
+			"Add the service account to the project's global or default workspace.",
+		e.projectID, strings.Join(e.tried, ", "))
+}
+
+// flagWorkspaceCache memoizes the last workspace that answered a feature-flag
+// call, per project, so the fallback loop tries it first.
+type flagWorkspaceCache struct {
+	mu   sync.Mutex
+	last map[string]string
+}
+
+func newFlagWorkspaceCache() *flagWorkspaceCache {
+	return &flagWorkspaceCache{last: map[string]string{}}
+}
+
+func (c *flagWorkspaceCache) get(projectID string) string {
+	if c == nil {
+		return ""
 	}
-	return strings.NewReplacer(
-		"{project_id}", projectID,
-		"{workspace_id}", workspaceID,
-		"{flag_id}", id,
-	).Replace("/api/app/projects/{project_id}/workspaces/{workspace_id}/feature-flags/{flag_id}"), nil
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.last[projectID]
+}
+
+func (c *flagWorkspaceCache) set(projectID, ws string) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.last[projectID] = ws
+}
+
+// flagWorkspaceCandidates returns the ordered candidate workspace ids for a
+// project: global, then default, then the first listed workspace (dedup) —
+// the same pick order client.DefaultWorkspaceID uses, but as a list so callers
+// can fall back when the preferred mount is membership-gated.
+func flagWorkspaceCandidates(ctx context.Context, c *client.Client, projectID string) ([]string, error) {
+	respBody, err := c.Do(ctx, "GET", fmt.Sprintf("/api/app/projects/%s/workspaces", projectID), nil)
+	if err != nil {
+		return nil, fmt.Errorf("listing workspaces for project %s: %w", projectID, err)
+	}
+	inner, err := client.UnwrapEnvelope(respBody)
+	if err != nil {
+		return nil, err
+	}
+	var list []struct {
+		ID        json.Number `json:"id"`
+		IsGlobal  bool        `json:"is_global"`
+		IsDefault bool        `json:"is_default"`
+	}
+	if err := json.Unmarshal(inner, &list); err != nil {
+		return nil, fmt.Errorf("decoding workspace list: %w", err)
+	}
+	if len(list) == 0 {
+		return nil, fmt.Errorf("project %s has no workspaces", projectID)
+	}
+	var global, def, first string
+	for i, w := range list {
+		id := w.ID.String()
+		if id == "" {
+			continue
+		}
+		if i == 0 || first == "" {
+			first = id
+		}
+		if w.IsGlobal && global == "" {
+			global = id
+		}
+		if w.IsDefault && def == "" {
+			def = id
+		}
+	}
+	ordered := make([]string, 0, 3)
+	seen := map[string]bool{}
+	for _, id := range []string{global, def, first} {
+		if id != "" && !seen[id] {
+			seen[id] = true
+			ordered = append(ordered, id)
+		}
+	}
+	return ordered, nil
+}
+
+// flagWorkspacePath renders the workspace-scoped feature-flags path.
+func flagWorkspacePath(projectID, ws, subpath string) string {
+	return fmt.Sprintf("/api/app/projects/%s/workspaces/%s/feature-flags%s", projectID, ws, subpath)
+}
+
+// flagWorkspaceDo issues a feature-flag API call with workspace fallback.
+// subpath is appended to the collection path ("" for the collection itself,
+// "/{id}" for an instance, "/{id}/archive" for the archive verb).
+//
+// A 404 on the workspace mount is ambiguous: the membership gate 404s before
+// the view runs for non-members, and an instance call also 404s when the flag
+// is absent from (or not bound to) that workspace. On 404 the loop probes the
+// workspace's collection GET: a 200 proves the workspace is accessible, so the
+// 404 was about the entity — but the remaining candidates are still tried
+// because a flag is bound to exactly one workspace. Only when every candidate
+// is inaccessible does the call fail with errNoAccessibleFlagWorkspace.
+func flagWorkspaceDo(ctx context.Context, c *client.Client, cache *flagWorkspaceCache, projectID, method, subpath string, body any) ([]byte, error) {
+	cands, err := flagWorkspaceCandidates(ctx, c, projectID)
+	if err != nil {
+		return nil, err
+	}
+	if last := cache.get(projectID); last != "" {
+		reordered := make([]string, 0, len(cands)+1)
+		reordered = append(reordered, last)
+		for _, ws := range cands {
+			if ws != last {
+				reordered = append(reordered, ws)
+			}
+		}
+		cands = reordered
+	}
+	var notFoundOnAccessible error
+	for _, ws := range cands {
+		respBody, err := c.Do(ctx, method, flagWorkspacePath(projectID, ws, subpath), body)
+		if err == nil {
+			cache.set(projectID, ws)
+			return respBody, nil
+		}
+		apiErr, ok := err.(*client.APIError)
+		if !ok || apiErr.StatusCode != 404 {
+			return nil, err
+		}
+		if subpath == "" && method == "GET" {
+			// This call IS the accessibility probe shape: a 404 here can only
+			// mean the membership gate, so the workspace is inaccessible.
+			continue
+		}
+		if _, perr := c.Do(ctx, "GET", flagWorkspacePath(projectID, ws, ""), nil); perr == nil {
+			notFoundOnAccessible = err
+		}
+	}
+	if notFoundOnAccessible != nil {
+		return nil, notFoundOnAccessible
+	}
+	return nil, &errNoAccessibleFlagWorkspace{projectID: projectID, tried: cands}
+}
+
+// ---------------------------------------------------------------------------
+// Lifecycle helpers.
+// ---------------------------------------------------------------------------
+
+func flagWireStatus(wire map[string]any) string {
+	s, _ := wire["status"].(string)
+	return s
+}
+
+func flagWireArchived(wire map[string]any) bool {
+	d, ok := wire["deleted"].(string)
+	return ok && d != ""
+}
+
+// flagDesiredStateFromWire derives the desired_state value from a GET body:
+// archived when soft-deleted, otherwise the wire status. Returns nil (null)
+// when the body carries neither.
+func flagDesiredStateFromWire(wire map[string]any) any {
+	if flagWireArchived(wire) {
+		return flagStateArchived
+	}
+	if s := flagWireStatus(wire); s != "" {
+		return s
+	}
+	return nil
+}
+
+// flagDesiredStatusConflict reports a human-readable conflict between an
+// explicitly configured `status` and `desired_state`, or "" when consistent.
+func flagDesiredStatusConflict(cfgRaw tftypes.Value, desired string) string {
+	if desired == "" {
+		return ""
+	}
+	cfgStatus, err := stringAttrFromRaw(cfgRaw, "status")
+	if err != nil || cfgStatus == "" {
+		return ""
+	}
+	if desired == flagStateArchived {
+		if cfgStatus != flagStateDisabled {
+			return fmt.Sprintf(
+				"desired_state = %q archives the flag via the archive endpoint, which requires a disabled flag; "+
+					"remove `status` from the configuration or set it to %q (got %q)",
+				flagStateArchived, flagStateDisabled, cfgStatus)
+		}
+		return ""
+	}
+	if cfgStatus != desired {
+		return fmt.Sprintf("`status` (%q) conflicts with `desired_state` (%q); remove one or make them agree", cfgStatus, desired)
+	}
+	return ""
 }
 
 func (r *FeatureFlagResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -151,17 +420,24 @@ func (r *FeatureFlagResource) Create(ctx context.Context, req resource.CreateReq
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}
+	desired, _ := stringAttrFromRaw(req.Plan.Raw, "desired_state")
+	if msg := flagDesiredStatusConflict(req.Config.Raw, desired); msg != "" {
+		resp.Diagnostics.AddError("Conflicting feature_flag status configuration", msg)
+		return
+	}
 	body, err := client.WireFromRaw(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding feature_flag request", err.Error())
 		return
 	}
-	path, err := r.collectionPath(ctx, projectID)
-	if err != nil {
-		resp.Diagnostics.AddError("Resolving workspace path", err.Error())
-		return
+	switch desired {
+	case flagStateEnabled, flagStateDisabled:
+		body["status"] = desired
+	case flagStateArchived:
+		// The API refuses to archive an enabled flag; create it disabled.
+		body["status"] = flagStateDisabled
 	}
-	respBody, err := r.client.Do(ctx, "POST", path, body)
+	respBody, err := flagWorkspaceDo(ctx, r.client, r.wsCache, projectID, "POST", "", body)
 	if err != nil {
 		resp.Diagnostics.AddError("Creating feature_flag", err.Error())
 		return
@@ -172,8 +448,27 @@ func (r *FeatureFlagResource) Create(ctx context.Context, req resource.CreateReq
 		return
 	}
 	id := idForFeatureFlag(wire)
+	if desired == flagStateArchived {
+		if _, err := flagWorkspaceDo(ctx, r.client, r.wsCache, projectID, "POST", "/"+id+"/archive", map[string]any{}); err != nil {
+			resp.Diagnostics.AddError("Archiving feature_flag after create", err.Error())
+			return
+		}
+		if wire, err = r.readFlagWire(ctx, projectID, id); err != nil {
+			resp.Diagnostics.AddError("Refreshing feature_flag after archive", err.Error())
+			return
+		}
+	}
 	r.writeFeatureFlagState(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, id)
 	finishShareOnCreate(ctx, r.client, &resp.State, &resp.Diagnostics, req.Plan.Raw, projectID, sharedEntityTypeFeatureFlag, id)
+}
+
+// readFlagWire GETs and unwraps the flag body.
+func (r *FeatureFlagResource) readFlagWire(ctx context.Context, projectID, id string) (map[string]any, error) {
+	respBody, err := flagWorkspaceDo(ctx, r.client, r.wsCache, projectID, "GET", "/"+id, nil)
+	if err != nil {
+		return nil, err
+	}
+	return unwrapFeatureFlag(respBody)
 }
 
 func (r *FeatureFlagResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -187,14 +482,18 @@ func (r *FeatureFlagResource) Read(ctx context.Context, req resource.ReadRequest
 		resp.Diagnostics.AddError("Reading feature_flag id", err.Error())
 		return
 	}
-	path, err := r.instancePath(ctx, projectID, id)
+	respBody, err := flagWorkspaceDo(ctx, r.client, r.wsCache, projectID, "GET", "/"+id, nil)
 	if err != nil {
-		resp.Diagnostics.AddError("Resolving workspace path", err.Error())
-		return
-	}
-	respBody, err := r.client.Do(ctx, "GET", path, nil)
-	if err != nil {
+		var noWS *errNoAccessibleFlagWorkspace
+		if errors.As(err, &noWS) {
+			// Every candidate workspace is membership-gated for this caller:
+			// the flag may well still exist. Removing it from state here would
+			// orphan the real flag, so surface the access problem instead.
+			resp.Diagnostics.AddError("Reading feature_flag", err.Error())
+			return
+		}
 		if apiErr, ok := err.(*client.APIError); ok && apiErr.StatusCode == 404 {
+			// 404 from an accessible workspace: the flag is really gone.
 			resp.State.RemoveResource(ctx)
 			return
 		}
@@ -212,6 +511,8 @@ func (r *FeatureFlagResource) Read(ctx context.Context, req resource.ReadRequest
 	// are preserved instead of being clobbered to null / a server-mangled shape,
 	// which would otherwise produce a permanent post-refresh diff. Computed-only
 	// values (absent from prior state) are still refreshed from the API response.
+	// Lifecycle attributes (desired_state / status / deleted) are always sourced
+	// from the response via extras so lifecycle drift stays visible.
 	r.writeFeatureFlagState(ctx, &resp.State, &resp.Diagnostics, req.State.Raw, wire, projectID, id)
 	refreshShareOnRead(ctx, r.client, &resp.State, &resp.Diagnostics, projectID, sharedEntityTypeFeatureFlag, id)
 }
@@ -228,17 +529,41 @@ func (r *FeatureFlagResource) Update(ctx context.Context, req resource.UpdateReq
 		resp.Diagnostics.AddError("Reading feature_flag id", err.Error())
 		return
 	}
+	desired, _ := stringAttrFromRaw(req.Plan.Raw, "desired_state")
+	if msg := flagDesiredStatusConflict(req.Config.Raw, desired); msg != "" {
+		resp.Diagnostics.AddError("Conflicting feature_flag status configuration", msg)
+		return
+	}
+	// Fetch the current server state so archive/restore transitions are
+	// computed from reality, not a possibly stale prior state.
+	curWire, err := r.readFlagWire(ctx, projectID, id)
+	if err != nil {
+		resp.Diagnostics.AddError("Reading feature_flag before update", err.Error())
+		return
+	}
+	curArchived := flagWireArchived(curWire)
+	if curArchived && desired != "" && desired != flagStateArchived {
+		// Leaving "archived": restore first so the PUT applies to a live flag.
+		if _, err := flagWorkspaceDo(ctx, r.client, r.wsCache, projectID, "DELETE", "/"+id+"/archive", nil); err != nil {
+			resp.Diagnostics.AddError("Restoring archived feature_flag", err.Error())
+			return
+		}
+		curArchived = false
+	}
 	body, err := client.WireFromRaw(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding feature_flag request", err.Error())
 		return
 	}
-	path, err := r.instancePath(ctx, projectID, id)
-	if err != nil {
-		resp.Diagnostics.AddError("Resolving workspace path", err.Error())
-		return
+	switch desired {
+	case flagStateEnabled, flagStateDisabled:
+		body["status"] = desired
+	case flagStateArchived:
+		// Archive requires a disabled flag; the read-modify-write PUT disables
+		// it (if needed) before the archive verb below.
+		body["status"] = flagStateDisabled
 	}
-	respBody, err := r.client.Do(ctx, "PUT", path, body)
+	respBody, err := flagWorkspaceDo(ctx, r.client, r.wsCache, projectID, "PUT", "/"+id, body)
 	if err != nil {
 		resp.Diagnostics.AddError("Updating feature_flag", err.Error())
 		return
@@ -248,11 +573,24 @@ func (r *FeatureFlagResource) Update(ctx context.Context, req resource.UpdateReq
 		resp.Diagnostics.AddError("Decoding feature_flag response", err.Error())
 		return
 	}
+	if desired == flagStateArchived {
+		if !curArchived {
+			if _, err := flagWorkspaceDo(ctx, r.client, r.wsCache, projectID, "POST", "/"+id+"/archive", map[string]any{}); err != nil {
+				resp.Diagnostics.AddError("Archiving feature_flag", err.Error())
+				return
+			}
+		}
+		if wire, err = r.readFlagWire(ctx, projectID, id); err != nil {
+			resp.Diagnostics.AddError("Refreshing feature_flag after archive", err.Error())
+			return
+		}
+	}
 	r.writeFeatureFlagState(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, id)
 	finishShareOnUpdate(ctx, r.client, &resp.State, &resp.Diagnostics, req.Plan.Raw, req.State.Raw, projectID, sharedEntityTypeFeatureFlag, id)
 }
 
 func (r *FeatureFlagResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	spec := FeatureFlagAttrSpec()
 	projectID, err := r.projectID(ctx, req.State.Raw)
 	if err != nil {
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
@@ -263,13 +601,35 @@ func (r *FeatureFlagResource) Delete(ctx context.Context, req resource.DeleteReq
 		resp.Diagnostics.AddError("Reading feature_flag id", err.Error())
 		return
 	}
-	// DELETE may return a JSON body (Mixpanel convention); Do tolerates it.
-	path, err := r.instancePath(ctx, projectID, id)
+	// The API refuses to hard-delete an enabled flag (CannotDeleteEnabledFlag,
+	// live-verified), so disable it first via a read-modify-write PUT.
+	curWire, err := r.readFlagWire(ctx, projectID, id)
 	if err != nil {
-		resp.Diagnostics.AddError("Resolving workspace path", err.Error())
+		var noWS *errNoAccessibleFlagWorkspace
+		if errors.As(err, &noWS) {
+			resp.Diagnostics.AddError("Deleting feature_flag", err.Error())
+			return
+		}
+		if apiErr, ok := err.(*client.APIError); ok && apiErr.StatusCode == 404 {
+			return // already gone
+		}
+		resp.Diagnostics.AddError("Reading feature_flag before delete", err.Error())
 		return
 	}
-	if _, err := r.client.Do(ctx, "DELETE", path, nil); err != nil {
+	if flagWireStatus(curWire) == flagStateEnabled && !flagWireArchived(curWire) {
+		body, berr := client.WireFromRaw(req.State.Raw, spec)
+		if berr != nil {
+			resp.Diagnostics.AddError("Encoding feature_flag disable request", berr.Error())
+			return
+		}
+		body["status"] = flagStateDisabled
+		if _, err := flagWorkspaceDo(ctx, r.client, r.wsCache, projectID, "PUT", "/"+id, body); err != nil {
+			resp.Diagnostics.AddError("Disabling feature_flag before delete", err.Error())
+			return
+		}
+	}
+	// DELETE may return a JSON body (Mixpanel convention); Do tolerates it.
+	if _, err := flagWorkspaceDo(ctx, r.client, r.wsCache, projectID, "DELETE", "/"+id, nil); err != nil {
 		if apiErr, ok := err.(*client.APIError); ok && apiErr.StatusCode == 404 {
 			return
 		}
@@ -293,8 +653,9 @@ func (r *FeatureFlagResource) ImportState(ctx context.Context, req resource.Impo
 
 // writeFeatureFlagState turns an unwrapped API body into resource state. base is the
 // planned raw value (req.Plan.Raw) on create/update so config-supplied values are
-// preserved verbatim, or a null tftypes.Value on read (state is rebuilt from the
-// API response alone). See client.RawFromWireMerged for the merge semantics.
+// preserved verbatim, or the prior state on read. See client.RawFromWireMerged for
+// the merge semantics. The lifecycle attributes (desired_state, status, deleted)
+// are always sourced from the API body via extras so lifecycle drift is visible.
 func (r *FeatureFlagResource) writeFeatureFlagState(ctx context.Context, state *tfsdk.State, diags *diagAppender, base tftypes.Value, wire map[string]any, projectID, id string) {
 	extras := map[string]any{
 		"id": id,
@@ -303,6 +664,13 @@ func (r *FeatureFlagResource) writeFeatureFlagState(ctx context.Context, state *
 		extras["project_id"] = projectID
 	}
 	extras["flag_id"] = id
+	extras["desired_state"] = flagDesiredStateFromWire(wire)
+	if s := flagWireStatus(wire); s != "" {
+		extras["status"] = s
+	} else {
+		extras["status"] = nil
+	}
+	extras["deleted"] = wire["deleted"]
 	schemaType := state.Schema.Type().TerraformType(ctx)
 	val, err := client.RawFromWireMerged(schemaType, base, wire, extras, FeatureFlagAttrSpec())
 	if err != nil {

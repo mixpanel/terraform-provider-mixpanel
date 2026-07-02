@@ -1,91 +1,34 @@
-# Lookup table resource example
+# Lookup table resource examples.
 #
-# Lookup tables enrich event data with additional attributes by mapping
-# a join key to supplementary data from CSV files.
+# Lookup tables enrich Mixpanel data by mapping a join key (the first CSV
+# column) to supplementary attributes. The provider drives the full
+# signed-URL upload handshake (upload-url -> storage PUT -> register ->
+# status polling) automatically from `csv_content`.
 
-terraform {
-  required_providers {
-    mixpanel = {
-      source = "mixpanel/mixpanel"
-    }
-  }
-}
-
-provider "mixpanel" {
-  project_id = 1234567
-}
-
-# Example 1: Basic lookup table
-resource "mixpanel_lookup_table" "user_attributes" {
-  project_id  = 1234567
-  name        = "User Attributes"
-  description = "CRM attributes for user enrichment"
-
-  # CSV file path (committed to repo or generated)
-  csv_file = "${path.module}/data/user_attributes.csv"
-
-  # Mark as ready for use in queries
-  mark_ready = true
-}
-
-# Example 2: Lookup table with explicit data group
-resource "mixpanel_data_group" "crm_data" {
-  project_id = 1234567
-  name       = "CRM Data"
-}
-
+# Example 1: CSV sourced from a file. Changing the file re-uploads the
+# table's rows in place (same table id).
 resource "mixpanel_lookup_table" "accounts" {
-  project_id    = 1234567
-  name          = "Account Details"
-  description   = "Company account metadata"
-  data_group_id = mixpanel_data_group.crm_data.data_group_id
+  project_id  = var.project_id
+  name        = "Account Attributes"
+  description = "CRM attributes keyed by account id"
 
-  csv_file   = "${path.module}/data/accounts.csv"
-  mark_ready = true
+  csv_content = file("${path.module}/data/accounts.csv")
 }
 
-# Example 3: Product catalog lookup
-resource "mixpanel_lookup_table" "products" {
-  project_id  = 1234567
-  name        = "Product Catalog"
-  description = "Product SKU to metadata mapping"
+# Example 2: inline CSV content.
+resource "mixpanel_lookup_table" "plans" {
+  project_id = var.project_id
+  name       = "Plan Metadata"
 
-  csv_file   = "${path.module}/data/products.csv"
-  mark_ready = true
+  csv_content = <<-CSV
+    plan_id,tier,monthly_price
+    p1,free,0
+    p2,pro,49
+    p3,enterprise,499
+  CSV
 }
 
-# Example 4: Environment-specific deployment
-locals {
-  environments = {
-    dev = {
-      project_id = 1111111
-      csv_file   = "dev_users.csv"
-    }
-    prod = {
-      project_id = 3333333
-      csv_file   = "prod_users.csv"
-    }
-  }
-}
-
-resource "mixpanel_lookup_table" "users_by_env" {
-  for_each = local.environments
-
-  project_id  = each.value.project_id
-  name        = "User Attributes [${upper(each.key)}]"
-  description = "User attributes for ${each.key} environment"
-
-  csv_file   = "${path.module}/data/${each.value.csv_file}"
-  mark_ready = true
-}
-
-# Outputs
-output "user_attributes_id" {
-  description = "Lookup table ID for user attributes"
-  value       = mixpanel_lookup_table.user_attributes.id
-}
-
-output "upload_status" {
-  description = "Upload status"
-  value       = mixpanel_lookup_table.user_attributes.upload_status
+output "accounts_table_id" {
+  description = "The dimension data-group id backing the lookup table (int64 as string)"
+  value       = mixpanel_lookup_table.accounts.id
 }

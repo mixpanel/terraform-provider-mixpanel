@@ -2,7 +2,9 @@
 //
 // HAND-EDITED EXCEPTION: share_with_project assertions (entities are shared
 // with the project by default; an explicit false removes the share). See
-// sharing.go. Re-apply if regenerating.
+// sharing.go. Also desired_state lifecycle transition steps (launch, conclude,
+// relaunch, decide, archive, restore) driven by the mock's verb routes.
+// Re-apply if regenerating.
 
 package provider
 
@@ -14,18 +16,27 @@ import (
 )
 
 func TestAccExperiment_lifecycle(t *testing.T) {
-	srv := newMockServer(t, mockOpts{enveloped: true, idField: "id", stringID: true, resultsMap: false, upsert: false, listCreate: false})
+	srv := newMockServer(t, mockOpts{
+		enveloped: true, idField: "id", stringID: true, resultsMap: false, upsert: false, listCreate: false,
+		// The real API creates experiments in draft.
+		createDefaults: map[string]any{"status": "draft"},
+	})
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testProtoV6,
 		Steps: []resource.TestStep{
 			{
 				// Create; the implicit post-apply refresh+plan asserts idempotency.
+				// With desired_state unset it tracks the server default (draft).
 				Config: providerConfig(srv.URL, `
 resource "mixpanel_experiment" "test" {
   name = "tf-acc-test"
 }`),
-				Check: resource.TestCheckResourceAttr("mixpanel_experiment.test", "share_with_project", "true"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("mixpanel_experiment.test", "share_with_project", "true"),
+					resource.TestCheckResourceAttr("mixpanel_experiment.test", "desired_state", "draft"),
+					resource.TestCheckResourceAttr("mixpanel_experiment.test", "status", "draft"),
+				),
 			},
 			{
 				// A changed attribute must plan as the expected action.
@@ -40,11 +51,95 @@ resource "mixpanel_experiment" "test" {
 				},
 			},
 			{
+				// draft -> active: PUT {id}/launch.
+				Config: providerConfig(srv.URL, `
+resource "mixpanel_experiment" "test" {
+  name          = "tf-acc-renamed"
+  desired_state = "active"
+}`),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("mixpanel_experiment.test", "desired_state", "active"),
+					resource.TestCheckResourceAttr("mixpanel_experiment.test", "status", "active"),
+					resource.TestCheckResourceAttrSet("mixpanel_experiment.test", "start_date"),
+				),
+			},
+			{
+				// active -> concluded (no decision): PUT {id}/force_conclude.
+				Config: providerConfig(srv.URL, `
+resource "mixpanel_experiment" "test" {
+  name          = "tf-acc-renamed"
+  desired_state = "concluded"
+}`),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("mixpanel_experiment.test", "desired_state", "concluded"),
+					resource.TestCheckResourceAttr("mixpanel_experiment.test", "status", "concluded"),
+					resource.TestCheckResourceAttrSet("mixpanel_experiment.test", "end_date"),
+				),
+			},
+			{
+				// concluded -> active: relaunch is allowed by the API.
+				Config: providerConfig(srv.URL, `
+resource "mixpanel_experiment" "test" {
+  name          = "tf-acc-renamed"
+  desired_state = "active"
+}`),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("mixpanel_experiment.test", "desired_state", "active"),
+					resource.TestCheckResourceAttr("mixpanel_experiment.test", "status", "active"),
+				),
+			},
+			{
+				// active -> concluded with a decision: PATCH {id}/decide. The
+				// server records success/fail; desired_state still reads
+				// "concluded" (concluded-with-decision).
+				Config: providerConfig(srv.URL, `
+resource "mixpanel_experiment" "test" {
+  name          = "tf-acc-renamed"
+  desired_state = "concluded"
+  decision      = jsonencode({ success = true, message = "ship it" })
+}`),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("mixpanel_experiment.test", "desired_state", "concluded"),
+					resource.TestCheckResourceAttr("mixpanel_experiment.test", "status", "success"),
+				),
+			},
+			{
+				// concluded/success -> archived: POST {id}/archive (soft delete).
+				Config: providerConfig(srv.URL, `
+resource "mixpanel_experiment" "test" {
+  name          = "tf-acc-renamed"
+  desired_state = "archived"
+  decision      = jsonencode({ success = true, message = "ship it" })
+}`),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("mixpanel_experiment.test", "desired_state", "archived"),
+					resource.TestCheckResourceAttrSet("mixpanel_experiment.test", "deleted"),
+				),
+			},
+			{
+				// archived -> concluded: DELETE {id}/archive (restore). The prior
+				// decision (status success) is preserved and still reads as
+				// "concluded"; no re-decide runs because `decision` is unchanged.
+				Config: providerConfig(srv.URL, `
+resource "mixpanel_experiment" "test" {
+  name          = "tf-acc-renamed"
+  desired_state = "concluded"
+  decision      = jsonencode({ success = true, message = "ship it" })
+}`),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("mixpanel_experiment.test", "desired_state", "concluded"),
+					resource.TestCheckResourceAttr("mixpanel_experiment.test", "status", "success"),
+					resource.TestCheckNoResourceAttr("mixpanel_experiment.test", "deleted"),
+				),
+			},
+			{
 				// Explicit share_with_project = false must remove the project share
 				// (update path: true -> false calls the shared-entities delete).
 				Config: providerConfig(srv.URL, `
 resource "mixpanel_experiment" "test" {
-  name = "tf-acc-renamed"
+  name               = "tf-acc-renamed"
+  desired_state      = "concluded"
+  decision           = jsonencode({ success = true, message = "ship it" })
   share_with_project = false
 }`),
 				Check: resource.TestCheckResourceAttr("mixpanel_experiment.test", "share_with_project", "false"),
@@ -56,7 +151,7 @@ resource "mixpanel_experiment" "test" {
 				ImportStateVerify:                    true,
 				ImportStateVerifyIdentifierAttribute: "id",
 				ImportStateIdFunc:                    importIDFunc("mixpanel_experiment.test", "id", "project_id"),
-				ImportStateVerifyIgnore:              []string{"allow_staff_override", "can_pin", "can_share", "can_update_basic", "can_view", "content_environments_id", "content_type", "created", "creator_email", "creator_id", "creator_name", "deleted", "end_date", "exposures_cache", "feature_flag", "feature_flag_content_env_id", "is_favorited", "is_shared_with_project", "is_superadmin", "last_modified_by_email", "last_modified_by_id", "last_modified_by_name", "modified", "pinned_date", "project_name", "results_cache", "settings", "start_date", "status"},
+				ImportStateVerifyIgnore:              []string{"allow_staff_override", "can_pin", "can_share", "can_update_basic", "can_view", "content_environments_id", "content_type", "created", "creator_email", "creator_id", "creator_name", "decision", "deleted", "end_date", "exposures_cache", "feature_flag", "feature_flag_content_env_id", "is_favorited", "is_shared_with_project", "is_superadmin", "last_modified_by_email", "last_modified_by_id", "last_modified_by_name", "modified", "pinned_date", "project_name", "results_cache", "settings", "start_date", "status"},
 			},
 		},
 	})

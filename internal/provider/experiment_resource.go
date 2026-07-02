@@ -5,16 +5,42 @@
 // project share via the shared-entities API and Read refreshes it. Entities a
 // service account creates are otherwise invisible to human users. Re-apply
 // these edits if regenerating this file.
+//
+// HAND-EDITED EXCEPTION: lifecycle verbs. The experiment status is verb-driven,
+// not a writable field: the DB vocabulary is draft/active/concluded/success/fail
+// (webapp ExperimentStatus enum) and transitions run through dedicated routes
+// (all live-verified 2026-07-02):
+//
+//	PUT   {id}/launch          draft|active|concluded -> active (POST 405s;
+//	                           success/fail raise ExperimentAlreadyStarted)
+//	PUT/POST {id}/force_conclude  active -> concluded (idempotent elsewhere;
+//	                           requires a JSON body, {} suffices)
+//	PATCH {id}/decide          active|concluded|success|fail -> success|fail
+//	                           (requires success or mode in the body)
+//	POST  {id}/archive         soft delete (sets `deleted`; auto-concludes an
+//	                           active experiment first)
+//	DELETE {id}/archive        restore (clears `deleted`)
+//
+// The synthetic `desired_state` attribute ("draft" | "active" | "concluded" |
+// "archived") drives these verbs; success/fail both surface as "concluded"
+// (they are concluded-with-decision, the raw value stays visible in `status`).
+// The optional `decision` attribute carries the jsonencode()d decide payload;
+// when set, reaching "concluded" uses PATCH {id}/decide instead of
+// force_conclude. Re-apply these edits if regenerating this file.
 
 package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
@@ -27,6 +53,7 @@ var (
 	_ resource.Resource                = (*ExperimentResource)(nil)
 	_ resource.ResourceWithConfigure   = (*ExperimentResource)(nil)
 	_ resource.ResourceWithImportState = (*ExperimentResource)(nil)
+	_ resource.ResourceWithModifyPlan  = (*ExperimentResource)(nil)
 )
 
 // keep the generated schema package and schema builder imported.
@@ -34,6 +61,17 @@ var _ = schema.StringAttribute{}
 
 // keep the types package imported (used by nested schema overrides).
 var _ = types.NumberType
+
+// Experiment desired_state vocabulary. draft/active/concluded mirror the
+// server's ExperimentStatus values; success/fail (a recorded decision) also
+// map to "concluded". "archived" is the soft-deleted state (non-null
+// `deleted`), reached via the archive verb.
+const (
+	expStateDraft     = "draft"
+	expStateActive    = "active"
+	expStateConcluded = "concluded"
+	expStateArchived  = "archived"
+)
 
 // NewExperimentResource constructs the experiment resource.
 func NewExperimentResource() resource.Resource {
@@ -54,6 +92,29 @@ func (r *ExperimentResource) Schema(ctx context.Context, req resource.SchemaRequ
 	s.Attributes["feature_flag"] = schema.StringAttribute{Optional: true, Computed: true}
 	s.Attributes["results_cache"] = schema.StringAttribute{Optional: true, Computed: true}
 	s.Attributes["settings"] = schema.StringAttribute{Optional: true, Computed: true}
+	s.Attributes["desired_state"] = schema.StringAttribute{
+		Optional: true,
+		Computed: true,
+		Validators: []validator.String{
+			stringvalidator.OneOf(expStateDraft, expStateActive, expStateConcluded, expStateArchived),
+		},
+		MarkdownDescription: "Lifecycle state to drive the experiment to: `draft`, `active`, " +
+			"`concluded`, or `archived`. Transitions run through the API's lifecycle verbs " +
+			"(launch / force_conclude / decide / archive / restore). A decided experiment " +
+			"(server status `success` or `fail`) surfaces as `concluded`; the raw value stays " +
+			"readable in `status`. Impossible transitions (back to `draft`, relaunching a " +
+			"decided experiment) fail with an explicit error. When unset, it tracks the " +
+			"server-side state.",
+	}
+	s.Attributes["decision"] = schema.StringAttribute{
+		Optional: true,
+		MarkdownDescription: "jsonencode() of the decide payload used when `desired_state` " +
+			"reaches `concluded`: `{\"success\": bool, \"variant\": str, \"message\": str, " +
+			"\"mode\": \"ship_variant\"|\"do_not_ship\"|\"abandon\", \"keep_cohort_targeting\": bool}`. " +
+			"`success` is required unless `mode` is set; `variant` is required when " +
+			"`mode` = `ship_variant`. When unset, concluding uses force_conclude (no decision " +
+			"recorded). Changing it while `desired_state` is `concluded` re-issues the decide call.",
+	}
 	s.Attributes[shareAttrName] = shareWithProjectAttribute()
 	stabilizeComputed(s.Attributes)
 	resp.Schema = s
@@ -74,6 +135,38 @@ func (r *ExperimentResource) Configure(ctx context.Context, req resource.Configu
 	r.client = c
 }
 
+// ModifyPlan marks the server-driven lifecycle attributes unknown when a
+// lifecycle transition (or a new decision) is planned, so the post-apply
+// values refreshed from the API do not violate Terraform's "planned value
+// must equal applied value" contract.
+func (r *ExperimentResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
+		return // create or destroy
+	}
+	planDesired, _ := stringAttrFromRaw(req.Plan.Raw, "desired_state")
+	stateDesired, _ := stringAttrFromRaw(req.State.Raw, "desired_state")
+	planDecision, _ := stringAttrFromRaw(req.Plan.Raw, "decision")
+	stateDecision, _ := stringAttrFromRaw(req.State.Raw, "decision")
+	if planDesired == stateDesired && planDecision == stateDecision {
+		return
+	}
+	// status / deleted / start_date / end_date are Computed-only (never in
+	// config), so marking them unknown is always safe.
+	for _, attr := range []string{"status", "deleted", "start_date", "end_date"} {
+		resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root(attr), types.StringUnknown())...)
+	}
+	// The verbs also rewrite server-managed jsonencode payloads (decide stores
+	// the decision in results_cache; launch/conclude touch the linked flag and
+	// caches, live-verified 2026-07-02). Those are Optional+Computed and taken
+	// from the wire when the API returns them, so a known planned value would
+	// violate the apply contract. Mark them unknown unless pinned in config.
+	for _, attr := range []string{"results_cache", "exposures_cache", "feature_flag", "settings"} {
+		if cfg, _ := stringAttrFromRaw(req.Config.Raw, attr); cfg == "" {
+			resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root(attr), types.StringUnknown())...)
+		}
+	}
+}
+
 // projectID resolves the project from the experiment project_id attribute (if any)
 // falling back to the provider default.
 func (r *ExperimentResource) projectID(ctx context.Context, raw tftypes.Value) (string, error) {
@@ -90,6 +183,142 @@ func (r *ExperimentResource) collectionPath(projectID string) string {
 
 func (r *ExperimentResource) instancePath(projectID, id string) string {
 	return strings.NewReplacer("{project_id}", projectID, "{experiment_id}", id).Replace("/api/app/projects/{project_id}/experiments/{experiment_id}")
+}
+
+// verbPath renders a lifecycle verb path ({id}/launch, {id}/archive, ...).
+func (r *ExperimentResource) verbPath(projectID, id, verb string) string {
+	return r.instancePath(projectID, id) + "/" + verb
+}
+
+// ---------------------------------------------------------------------------
+// Lifecycle helpers.
+// ---------------------------------------------------------------------------
+
+func expWireStatus(wire map[string]any) string {
+	s, _ := wire["status"].(string)
+	return s
+}
+
+func expWireArchived(wire map[string]any) bool {
+	d, ok := wire["deleted"].(string)
+	return ok && d != ""
+}
+
+// expDesiredStateFromWire derives desired_state from a GET body: archived when
+// soft-deleted; otherwise draft/active pass through and concluded/success/fail
+// all map to "concluded". Returns nil (null) when the body carries neither.
+func expDesiredStateFromWire(wire map[string]any) any {
+	if expWireArchived(wire) {
+		return expStateArchived
+	}
+	switch expWireStatus(wire) {
+	case expStateDraft:
+		return expStateDraft
+	case expStateActive:
+		return expStateActive
+	case expStateConcluded, "success", "fail":
+		return expStateConcluded
+	}
+	return nil
+}
+
+// expDecisionBody parses the `decision` attribute (jsonencode of the decide
+// payload). Returns nil when unset.
+func expDecisionBody(raw tftypes.Value) (map[string]any, error) {
+	s, err := stringAttrFromRaw(raw, "decision")
+	if err != nil || s == "" {
+		return nil, err
+	}
+	var body map[string]any
+	if err := json.Unmarshal([]byte(s), &body); err != nil {
+		return nil, fmt.Errorf("parsing `decision` (must be jsonencode of the decide payload): %w", err)
+	}
+	return body, nil
+}
+
+// concludeExperiment moves an active experiment to concluded: PATCH decide when
+// a decision payload is supplied, PUT force_conclude otherwise.
+func (r *ExperimentResource) concludeExperiment(ctx context.Context, projectID, id string, decision map[string]any) error {
+	if decision != nil {
+		if _, err := r.client.Do(ctx, "PATCH", r.verbPath(projectID, id, "decide"), decision); err != nil {
+			return fmt.Errorf("deciding experiment: %w", err)
+		}
+		return nil
+	}
+	// force_conclude reads the request body unconditionally; {} is the minimal
+	// valid payload (end_date optional).
+	if _, err := r.client.Do(ctx, "PUT", r.verbPath(projectID, id, "force_conclude"), map[string]any{}); err != nil {
+		return fmt.Errorf("concluding experiment: %w", err)
+	}
+	return nil
+}
+
+// reconcileLifecycle runs the verb sequence taking the experiment from its
+// current server state to desired. decisionChanged gates re-deciding an
+// already-concluded/decided experiment.
+func (r *ExperimentResource) reconcileLifecycle(ctx context.Context, projectID, id, curStatus string, curArchived bool, desired string, decision map[string]any, decisionChanged bool) error {
+	if desired == "" {
+		return nil
+	}
+	if curArchived {
+		if desired == expStateArchived {
+			return nil
+		}
+		if _, err := r.client.Do(ctx, "DELETE", r.verbPath(projectID, id, "archive"), nil); err != nil {
+			return fmt.Errorf("restoring archived experiment: %w", err)
+		}
+		curArchived = false
+	}
+	switch desired {
+	case expStateDraft:
+		if curStatus != expStateDraft {
+			return fmt.Errorf(
+				"cannot transition experiment from %q back to \"draft\": the Mixpanel API has no verb for it; recreate the experiment instead",
+				curStatus)
+		}
+	case expStateActive:
+		switch curStatus {
+		case expStateActive:
+			// already there
+		case expStateDraft, expStateConcluded:
+			if _, err := r.client.Do(ctx, "PUT", r.verbPath(projectID, id, "launch"), nil); err != nil {
+				return fmt.Errorf("launching experiment: %w", err)
+			}
+		default: // success / fail
+			return fmt.Errorf(
+				"cannot relaunch experiment from decided state %q: the API rejects launch after a decision (ExperimentAlreadyStarted); recreate the experiment instead",
+				curStatus)
+		}
+	case expStateConcluded:
+		switch curStatus {
+		case expStateDraft:
+			// conclude only works from active: launch first (matches the UI flow).
+			if _, err := r.client.Do(ctx, "PUT", r.verbPath(projectID, id, "launch"), nil); err != nil {
+				return fmt.Errorf("launching experiment (required before concluding a draft): %w", err)
+			}
+			if err := r.concludeExperiment(ctx, projectID, id, decision); err != nil {
+				return err
+			}
+		case expStateActive:
+			if err := r.concludeExperiment(ctx, projectID, id, decision); err != nil {
+				return err
+			}
+		case expStateConcluded, "success", "fail":
+			// Already concluded; only act when a (new) decision was supplied —
+			// decide is valid from all of these states.
+			if decision != nil && decisionChanged {
+				if _, err := r.client.Do(ctx, "PATCH", r.verbPath(projectID, id, "decide"), decision); err != nil {
+					return fmt.Errorf("deciding experiment: %w", err)
+				}
+			}
+		}
+	case expStateArchived:
+		// POST archive soft-deletes and auto-concludes an active experiment.
+		if _, err := r.client.Do(ctx, "POST", r.verbPath(projectID, id, "archive"), map[string]any{}); err != nil {
+			return fmt.Errorf("archiving experiment: %w", err)
+		}
+	}
+	return nil
 }
 
 func (r *ExperimentResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -115,8 +344,33 @@ func (r *ExperimentResource) Create(ctx context.Context, req resource.CreateRequ
 		return
 	}
 	id := idForExperiment(wire)
+	desired, _ := stringAttrFromRaw(req.Plan.Raw, "desired_state")
+	if desired != "" && desired != expStateDraft {
+		decision, derr := expDecisionBody(req.Plan.Raw)
+		if derr != nil {
+			resp.Diagnostics.AddError("Parsing experiment decision", derr.Error())
+			return
+		}
+		if err := r.reconcileLifecycle(ctx, projectID, id, expWireStatus(wire), expWireArchived(wire), desired, decision, decision != nil); err != nil {
+			resp.Diagnostics.AddError("Applying experiment desired_state after create", err.Error())
+			return
+		}
+		if wire, err = r.readExperimentWire(ctx, projectID, id); err != nil {
+			resp.Diagnostics.AddError("Refreshing experiment after lifecycle transition", err.Error())
+			return
+		}
+	}
 	r.writeExperimentState(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, id)
 	finishShareOnCreate(ctx, r.client, &resp.State, &resp.Diagnostics, req.Plan.Raw, projectID, sharedEntityTypeExperiment, id)
+}
+
+// readExperimentWire GETs and unwraps the experiment body.
+func (r *ExperimentResource) readExperimentWire(ctx context.Context, projectID, id string) (map[string]any, error) {
+	respBody, err := r.client.Do(ctx, "GET", r.instancePath(projectID, id), nil)
+	if err != nil {
+		return nil, err
+	}
+	return unwrapExperiment(respBody)
 }
 
 func (r *ExperimentResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -150,6 +404,8 @@ func (r *ExperimentResource) Read(ctx context.Context, req resource.ReadRequest,
 	// are preserved instead of being clobbered to null / a server-mangled shape,
 	// which would otherwise produce a permanent post-refresh diff. Computed-only
 	// values (absent from prior state) are still refreshed from the API response.
+	// Lifecycle attributes (desired_state / status / deleted) are always sourced
+	// from the response via extras so lifecycle drift stays visible.
 	r.writeExperimentState(ctx, &resp.State, &resp.Diagnostics, req.State.Raw, wire, projectID, id)
 	refreshShareOnRead(ctx, r.client, &resp.State, &resp.Diagnostics, projectID, sharedEntityTypeExperiment, id)
 }
@@ -166,6 +422,30 @@ func (r *ExperimentResource) Update(ctx context.Context, req resource.UpdateRequ
 		resp.Diagnostics.AddError("Reading experiment id", err.Error())
 		return
 	}
+	desired, _ := stringAttrFromRaw(req.Plan.Raw, "desired_state")
+	decision, derr := expDecisionBody(req.Plan.Raw)
+	if derr != nil {
+		resp.Diagnostics.AddError("Parsing experiment decision", derr.Error())
+		return
+	}
+	planDecision, _ := stringAttrFromRaw(req.Plan.Raw, "decision")
+	stateDecision, _ := stringAttrFromRaw(req.State.Raw, "decision")
+	// Fetch the current server state so lifecycle transitions are computed
+	// from reality, not a possibly stale prior state.
+	curWire, err := r.readExperimentWire(ctx, projectID, id)
+	if err != nil {
+		resp.Diagnostics.AddError("Reading experiment before update", err.Error())
+		return
+	}
+	curStatus, curArchived := expWireStatus(curWire), expWireArchived(curWire)
+	if curArchived && desired != "" && desired != expStateArchived {
+		// Leaving "archived": restore first so the PATCH applies to a live row.
+		if _, err := r.client.Do(ctx, "DELETE", r.verbPath(projectID, id, "archive"), nil); err != nil {
+			resp.Diagnostics.AddError("Restoring archived experiment", err.Error())
+			return
+		}
+		curArchived = false
+	}
 	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding experiment request", err.Error())
@@ -180,6 +460,16 @@ func (r *ExperimentResource) Update(ctx context.Context, req resource.UpdateRequ
 	if err != nil {
 		resp.Diagnostics.AddError("Decoding experiment response", err.Error())
 		return
+	}
+	if desired != "" {
+		if err := r.reconcileLifecycle(ctx, projectID, id, curStatus, curArchived, desired, decision, planDecision != stateDecision); err != nil {
+			resp.Diagnostics.AddError("Applying experiment desired_state", err.Error())
+			return
+		}
+		if wire, err = r.readExperimentWire(ctx, projectID, id); err != nil {
+			resp.Diagnostics.AddError("Refreshing experiment after lifecycle transition", err.Error())
+			return
+		}
 	}
 	r.writeExperimentState(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, id)
 	finishShareOnUpdate(ctx, r.client, &resp.State, &resp.Diagnostics, req.Plan.Raw, req.State.Raw, projectID, sharedEntityTypeExperiment, id)
@@ -197,6 +487,8 @@ func (r *ExperimentResource) Delete(ctx context.Context, req resource.DeleteRequ
 		return
 	}
 	// DELETE may return a JSON body (Mixpanel convention); Do tolerates it.
+	// Hard delete works from every lifecycle state, including archived
+	// (live-verified 2026-07-02).
 	if _, err := r.client.Do(ctx, "DELETE", r.instancePath(projectID, id), nil); err != nil {
 		if apiErr, ok := err.(*client.APIError); ok && apiErr.StatusCode == 404 {
 			return
@@ -221,8 +513,9 @@ func (r *ExperimentResource) ImportState(ctx context.Context, req resource.Impor
 
 // writeExperimentState turns an unwrapped API body into resource state. base is the
 // planned raw value (req.Plan.Raw) on create/update so config-supplied values are
-// preserved verbatim, or a null tftypes.Value on read (state is rebuilt from the
-// API response alone). See client.RawFromWireMerged for the merge semantics.
+// preserved verbatim, or the prior state on read. See client.RawFromWireMerged for
+// the merge semantics. The lifecycle attributes (desired_state, status, deleted)
+// are always sourced from the API body via extras so lifecycle drift is visible.
 func (r *ExperimentResource) writeExperimentState(ctx context.Context, state *tfsdk.State, diags *diagAppender, base tftypes.Value, wire map[string]any, projectID, id string) {
 	extras := map[string]any{
 		"id": id,
@@ -231,6 +524,13 @@ func (r *ExperimentResource) writeExperimentState(ctx context.Context, state *tf
 		extras["project_id"] = projectID
 	}
 	extras["experiment_id"] = id
+	extras["desired_state"] = expDesiredStateFromWire(wire)
+	if s := expWireStatus(wire); s != "" {
+		extras["status"] = s
+	} else {
+		extras["status"] = nil
+	}
+	extras["deleted"] = wire["deleted"]
 	schemaType := state.Schema.Type().TerraformType(ctx)
 	val, err := client.RawFromWireMerged(schemaType, base, wire, extras, ExperimentAttrSpec())
 	if err != nil {

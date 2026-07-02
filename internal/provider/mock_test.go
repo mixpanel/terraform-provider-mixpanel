@@ -86,6 +86,10 @@ type mockOpts struct {
 	// (e.g. behavior_id): the create handler extracts the id from this key, then
 	// re-reads via the instance GET (which returns the id under idField).
 	createIDField string
+	// createDefaults are server-assigned defaults merged into a created object
+	// when the request body does not carry them (e.g. an experiment is born
+	// with status "draft", a feature flag with status "disabled").
+	createDefaults map[string]any
 	// rpcLifecycle models an org-scoped RPC entity (project) that has no REST CRUD:
 	// create POSTs {createNameKey:[<name>]} to .../create-<plural>/ and the
 	// enveloped response is an ARRAY of created rows (each {idField, matchAttr:name});
@@ -153,6 +157,16 @@ func (m *mockServer) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Lifecycle verb routes (feature flags + experiments), additive: they model
+	// POST/DELETE {id}/archive, PUT {id}/launch, PUT|POST {id}/force_conclude
+	// and PATCH {id}/decide so desired_state transition tests can run against
+	// the mock. Handled before the generic CRUD switch so a POST to
+	// .../{id}/archive is not mistaken for an entity create. Caller holds m.mu.
+	if verb, id, ok := lifecycleVerb(r.URL.Path); ok {
+		m.handleLifecycleVerb(w, r, verb, id)
+		return
+	}
+
 	switch r.Method {
 	case http.MethodPost:
 		body := m.parseBody(r)
@@ -189,6 +203,11 @@ func (m *mockServer) handle(w http.ResponseWriter, r *http.Request) {
 			// different key than the read identity field (e.g. behavior: create -> id,
 			// read -> behavior_id). Both keys are harmless on the stored object.
 			body[m.opts.createIDField] = m.idValue(idStr)
+		}
+		for k, v := range m.opts.createDefaults {
+			if _, ok := body[k]; !ok {
+				body[k] = v
+			}
 		}
 		m.store[idStr] = body
 		if m.opts.listCreate {
@@ -238,6 +257,109 @@ func (m *mockServer) handle(w http.ResponseWriter, r *http.Request) {
 		m.respond(w, "", map[string]any{})
 	default:
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+	}
+}
+
+// lifecycleVerb recognizes lifecycle verb paths ({id}/archive, {id}/launch,
+// {id}/force_conclude, {id}/decide) and returns the verb and instance id.
+func lifecycleVerb(p string) (verb, id string, ok bool) {
+	segs := strings.Split(strings.Trim(p, "/"), "/")
+	if len(segs) < 2 {
+		return "", "", false
+	}
+	switch last := segs[len(segs)-1]; last {
+	case "archive", "launch", "force_conclude", "decide":
+		return last, segs[len(segs)-2], true
+	}
+	return "", "", false
+}
+
+// handleLifecycleVerb models the feature-flag / experiment lifecycle verbs the
+// way the real API behaves (live-verified 2026-07-02):
+//
+//   - POST {id}/archive soft-deletes (sets `deleted`); refuses an enabled flag
+//     (400 CannotDeleteEnabledFlag) and auto-concludes an active experiment.
+//   - DELETE {id}/archive restores (clears `deleted`).
+//   - PUT {id}/launch: draft/active/concluded -> active (+start_date); a
+//     decided experiment (success/fail) is rejected (ExperimentAlreadyStarted).
+//   - PUT|POST {id}/force_conclude: active -> concluded (+end_date); a no-op
+//     from any other status, matching the server's tolerated
+//     ExperimentAlreadyConcluded.
+//   - PATCH {id}/decide: sets status success/fail from the body's `success`.
+//
+// Caller holds m.mu.
+func (m *mockServer) handleLifecycleVerb(w http.ResponseWriter, r *http.Request, verb, id string) {
+	obj, ok := m.store[id]
+	if !ok {
+		http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+		return
+	}
+	status, _ := obj["status"].(string)
+	switch verb {
+	case "archive":
+		switch r.Method {
+		case http.MethodPost:
+			if status == "enabled" {
+				http.Error(w, `{"status":"error","error":"Unable to delete enabled feature flag","type":"CannotDeleteEnabledFlag"}`, http.StatusBadRequest)
+				return
+			}
+			if status == "active" {
+				obj["status"] = "concluded"
+				obj["end_date"] = "2026-01-01T00:00:00"
+			}
+			obj["deleted"] = "2026-01-01T00:00:00"
+			m.store[id] = obj
+			m.respondValue(w, map[string]any{})
+		case http.MethodDelete:
+			obj["deleted"] = nil
+			m.store[id] = obj
+			m.respond(w, id, obj)
+		default:
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		}
+	case "launch":
+		if r.Method != http.MethodPut {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+		switch status {
+		case "", "draft", "active", "concluded":
+			obj["status"] = "active"
+			if obj["start_date"] == nil {
+				obj["start_date"] = "2026-01-01T00:00:00"
+			}
+			m.store[id] = obj
+			m.respond(w, id, obj)
+		default:
+			http.Error(w, `{"status":"error","error":"ExperimentAlreadyStarted"}`, http.StatusBadRequest)
+		}
+	case "force_conclude":
+		if r.Method != http.MethodPut && r.Method != http.MethodPost {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+		if status == "active" {
+			obj["status"] = "concluded"
+			obj["end_date"] = "2026-01-01T00:00:00"
+		}
+		m.store[id] = obj
+		m.respond(w, id, obj)
+	case "decide":
+		if r.Method != http.MethodPatch {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+		body := m.parseBody(r)
+		if s, _ := body["success"].(bool); s {
+			obj["status"] = "success"
+		} else {
+			obj["status"] = "fail"
+		}
+		if obj["end_date"] == nil {
+			obj["end_date"] = "2026-01-01T00:00:00"
+		}
+		m.store[id] = obj
+		m.respond(w, id, obj)
 	}
 }
 

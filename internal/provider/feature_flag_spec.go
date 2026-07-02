@@ -2,7 +2,8 @@
 //
 // HAND-EDITED EXCEPTION: "share_with_project" added to PathParamAttrs so the
 // synthetic sharing attribute (see sharing.go) is never serialized into
-// entity request bodies. Re-apply if regenerating.
+// entity request bodies. "desired_state" likewise (lifecycle-verb attribute,
+// see feature_flag_resource.go). Re-apply if regenerating.
 
 package provider
 
@@ -15,7 +16,7 @@ func FeatureFlagAttrSpec() client.AttrSpec {
 	return client.AttrSpec{
 		IDAttr:            "id",
 		ProjectIDAttr:     "project_id",
-		PathParamAttrs:    map[string]bool{"share_with_project": true, "flag_id": true},
+		PathParamAttrs:    map[string]bool{"share_with_project": true, "flag_id": true, "desired_state": true},
 		JSONEncodeAttrs:   map[string]bool{"content_environments": true},
 		JSONStringAttrs:   map[string]bool{},
 		JSONEncodeWireKey: map[string]string{"allow_staff_override": "allow_staff_override", "can_pin": "can_pin", "can_share": "can_share", "can_update_basic": "can_update_basic", "can_view": "can_view", "content_environments": "content_environments", "content_environments_id": "content_environments_id", "content_type": "content_type", "creator_email": "creator_email", "creator_id": "creator_id", "creator_name": "creator_name", "data_group_id": "data_group_id", "enabled_at": "enabled_at", "experiment_id": "experiment_id", "hash_salt": "hash_salt", "is_experiment_active": "is_experiment_active", "is_favorited": "is_favorited", "is_shared_with_project": "is_shared_with_project", "is_superadmin": "is_superadmin", "last_modified_by_email": "last_modified_by_email", "last_modified_by_id": "last_modified_by_id", "last_modified_by_name": "last_modified_by_name", "pinned_date": "pinned_date", "project_id": "project_id", "project_name": "project_name", "reset_hash_salt": "reset_hash_salt", "serving_method": "serving_method", "workspace_id": "workspace_id"},
