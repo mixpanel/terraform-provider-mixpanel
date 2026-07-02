@@ -88,7 +88,7 @@ func (r *CustomRoleResource) Create(ctx context.Context, req resource.CreateRequ
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding custom_role request", err.Error())
 		return
@@ -153,7 +153,7 @@ func (r *CustomRoleResource) Update(ctx context.Context, req resource.UpdateRequ
 		resp.Diagnostics.AddError("Reading custom_role id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding custom_role request", err.Error())
 		return

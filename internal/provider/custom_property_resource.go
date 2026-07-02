@@ -91,7 +91,7 @@ func (r *CustomPropertyResource) Create(ctx context.Context, req resource.Create
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding custom_property request", err.Error())
 		return
@@ -156,7 +156,7 @@ func (r *CustomPropertyResource) Update(ctx context.Context, req resource.Update
 		resp.Diagnostics.AddError("Reading custom_property id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding custom_property request", err.Error())
 		return

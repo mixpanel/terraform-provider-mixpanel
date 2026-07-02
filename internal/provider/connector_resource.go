@@ -91,7 +91,7 @@ func (r *ConnectorResource) Create(ctx context.Context, req resource.CreateReque
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding connector request", err.Error())
 		return

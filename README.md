@@ -52,6 +52,26 @@ resource "mixpanel_annotation" "release" {
 }
 ```
 
+## Rate limiting and retries
+
+The provider includes automatic retry logic for transient failures:
+
+- **Retries on**: 429 (rate limit), 408 (timeout), 500, 502, 503, 504 (server errors)
+- **Retry-After header**: Honored on 429 responses
+- **Exponential backoff**: 1s base, doubling each attempt, up to 60s max, with 10% jitter
+- **Max retries**: 5 attempts (6 total requests including the initial attempt)
+- **No retry on**: 4xx errors (except 408/429) — these are terminal client errors
+
+For large `terraform apply` operations (100+ resources), consider using
+`-parallelism=2` to reduce the risk of hitting Mixpanel API rate limits:
+
+```sh
+terraform apply -parallelism=2
+```
+
+The default parallelism of 10 can overwhelm rate limits when creating many resources
+at once. Reducing parallelism trades apply speed for reliability.
+
 ## Polymorphic / dynamic fields
 
 Some Mixpanel objects contain polymorphic or free-form JSON (e.g. dashboard layouts,

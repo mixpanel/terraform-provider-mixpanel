@@ -14,7 +14,7 @@ func AnnotationAttrSpec() client.AttrSpec {
 		PathParamAttrs:    map[string]bool{"annotation_id": true},
 		JSONEncodeAttrs:   map[string]bool{"user": true},
 		JSONStringAttrs:   map[string]bool{},
-		JSONEncodeWireKey: map[string]string{},
+		JSONEncodeWireKey: map[string]string{"project_id": "project_id", "user_id": "user_id"},
 		OutputOnlyAttrs:   map[string]bool{},
 		SpreadAttrs:       map[string]bool{},
 	}

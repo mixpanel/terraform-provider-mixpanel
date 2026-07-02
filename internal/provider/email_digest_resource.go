@@ -89,7 +89,7 @@ func (r *EmailDigestResource) Create(ctx context.Context, req resource.CreateReq
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding email_digest request", err.Error())
 		return
@@ -154,7 +154,7 @@ func (r *EmailDigestResource) Update(ctx context.Context, req resource.UpdateReq
 		resp.Diagnostics.AddError("Reading email_digest id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding email_digest request", err.Error())
 		return

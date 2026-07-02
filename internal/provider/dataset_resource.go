@@ -98,7 +98,7 @@ func (r *DatasetResource) Create(ctx context.Context, req resource.CreateRequest
 		resp.Diagnostics.AddError("Creating dataset", "dataset_id must be set in configuration (client-supplied id)")
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding dataset request", err.Error())
 		return
@@ -167,7 +167,7 @@ func (r *DatasetResource) Update(ctx context.Context, req resource.UpdateRequest
 		resp.Diagnostics.AddError("Reading dataset id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding dataset request", err.Error())
 		return

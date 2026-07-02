@@ -88,7 +88,7 @@ func (r *LexiconTagResource) Create(ctx context.Context, req resource.CreateRequ
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding lexicon_tag request", err.Error())
 		return
@@ -153,7 +153,7 @@ func (r *LexiconTagResource) Update(ctx context.Context, req resource.UpdateRequ
 		resp.Diagnostics.AddError("Reading lexicon_tag id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding lexicon_tag request", err.Error())
 		return
@@ -172,9 +172,24 @@ func (r *LexiconTagResource) Update(ctx context.Context, req resource.UpdateRequ
 }
 
 func (r *LexiconTagResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	// Lexicon tags have no DELETE endpoint in the API.
-	// This is a no-op - the tag will be orphaned on the server when removed from Terraform state.
-	// This is acceptable behavior for metadata/categorization resources.
+	projectID, err := r.projectID(ctx, req.State.Raw)
+	if err != nil {
+		resp.Diagnostics.AddError("Resolving project_id", err.Error())
+		return
+	}
+	id, err := stringAttrFromRaw(req.State.Raw, "id")
+	if err != nil {
+		resp.Diagnostics.AddError("Reading lexicon_tag id", err.Error())
+		return
+	}
+	// DELETE may return a JSON body (Mixpanel convention); Do tolerates it.
+	if _, err := r.client.Do(ctx, "DELETE", r.instancePath(projectID, id), nil); err != nil {
+		if apiErr, ok := err.(*client.APIError); ok && apiErr.StatusCode == 404 {
+			return
+		}
+		resp.Diagnostics.AddError("Deleting lexicon_tag", err.Error())
+		return
+	}
 }
 
 func (r *LexiconTagResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {

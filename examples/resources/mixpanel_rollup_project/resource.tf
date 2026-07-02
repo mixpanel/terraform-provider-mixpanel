@@ -7,4 +7,9 @@ resource "mixpanel_rollup_project" "all_regions" {
     "dataset_us",
     "dataset_eu",
   ]
+
+  # IMPORTANT: prevent_destroy protects against accidental deletion of rollup projects.
+  lifecycle {
+    prevent_destroy = true
+  }
 }

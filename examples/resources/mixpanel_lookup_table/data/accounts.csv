@@ -1,0 +1,6 @@
+account_id,account_name,plan_type,employee_count,region,industry,mrr
+acc_001,Acme Corporation,enterprise,5000,US-West,Manufacturing,50000
+acc_002,Widget Incorporated,pro,250,US-East,Retail,5000
+acc_003,Tech Startup LLC,free,25,US-West,Technology,0
+acc_004,Global Industries,enterprise,25000,Europe,Finance,250000
+acc_005,Consulting Partners,pro,100,US-Central,Consulting,8000

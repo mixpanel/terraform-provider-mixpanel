@@ -35,11 +35,9 @@ func NewFeatureFlagResource() resource.Resource {
 }
 
 type FeatureFlagResource struct {
-	client *client.Client
-	// cachedWorkspaceID memoizes the resolved workspace id per project id, so a
-	// config using project_id overrides across multiple projects resolves the
-	// correct workspace for each instead of reusing the first one resolved.
-	cachedWorkspaceID map[string]string
+	client               *client.Client
+	// Task #11: Use thread-safe WorkspacePathBuilder instead of unsafe map cache.
+	workspacePathBuilder *client.WorkspacePathBuilder
 }
 
 func (r *FeatureFlagResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -99,6 +97,7 @@ func (r *FeatureFlagResource) Configure(ctx context.Context, req resource.Config
 		return
 	}
 	r.client = c
+	r.workspacePathBuilder = client.NewWorkspacePathBuilder(c)
 }
 
 // projectID resolves the project from the feature_flag project_id attribute (if any)
@@ -111,31 +110,33 @@ func (r *FeatureFlagResource) projectID(ctx context.Context, raw tftypes.Value) 
 	return r.client.ProjectID(""), nil
 }
 
-// workspaceID returns the workspace id used to template the feature_flag CRUD path.
-// The project-only feature_flag route requires a workspace, so we target the
-// project's canonical workspace (global "All Project Data", else default),
-// memoized per project id for the lifetime of this resource instance so that a
-// config targeting multiple projects resolves the correct workspace for each.
-func (r *FeatureFlagResource) workspaceID(projectID string) string {
-	if r.cachedWorkspaceID == nil {
-		r.cachedWorkspaceID = map[string]string{}
+// collectionPath returns the workspace-scoped path for feature flags.
+// Task #11: Use thread-safe WorkspacePathBuilder to avoid data race.
+func (r *FeatureFlagResource) collectionPath(ctx context.Context, projectID string) (string, error) {
+	workspaceID, err := r.workspacePathBuilder.WorkspaceID(ctx, projectID)
+	if err != nil {
+		return "", fmt.Errorf("resolving workspace for project %s: %w", projectID, err)
 	}
-	if ws, ok := r.cachedWorkspaceID[projectID]; ok && ws != "" {
-		return ws
-	}
-	if ws, err := r.client.DefaultWorkspaceID(context.Background(), projectID); err == nil && ws != "" {
-		r.cachedWorkspaceID[projectID] = ws
-	}
-	return r.cachedWorkspaceID[projectID]
+	return strings.NewReplacer(
+		"{project_id}", projectID,
+		"{workspace_id}", workspaceID,
+	).Replace("/api/app/projects/{project_id}/workspaces/{workspace_id}/feature-flags"), nil
 }
 
-func (r *FeatureFlagResource) collectionPath(projectID string) string {
-	return strings.NewReplacer("{project_id}", projectID, "{workspace_id}", r.workspaceID(projectID)).Replace("/api/app/projects/{project_id}/workspaces/{workspace_id}/feature-flags")
+// instancePath returns the workspace-scoped path for a specific feature flag.
+// Task #11: Use thread-safe WorkspacePathBuilder to avoid data race.
+func (r *FeatureFlagResource) instancePath(ctx context.Context, projectID, id string) (string, error) {
+	workspaceID, err := r.workspacePathBuilder.WorkspaceID(ctx, projectID)
+	if err != nil {
+		return "", fmt.Errorf("resolving workspace for project %s: %w", projectID, err)
+	}
+	return strings.NewReplacer(
+		"{project_id}", projectID,
+		"{workspace_id}", workspaceID,
+		"{flag_id}", id,
+	).Replace("/api/app/projects/{project_id}/workspaces/{workspace_id}/feature-flags/{flag_id}"), nil
 }
 
-func (r *FeatureFlagResource) instancePath(projectID, id string) string {
-	return strings.NewReplacer("{project_id}", projectID, "{workspace_id}", r.workspaceID(projectID), "{flag_id}", id).Replace("/api/app/projects/{project_id}/workspaces/{workspace_id}/feature-flags/{flag_id}")
-}
 
 func (r *FeatureFlagResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	spec := FeatureFlagAttrSpec()
@@ -149,7 +150,12 @@ func (r *FeatureFlagResource) Create(ctx context.Context, req resource.CreateReq
 		resp.Diagnostics.AddError("Encoding feature_flag request", err.Error())
 		return
 	}
-	respBody, err := r.client.Do(ctx, "POST", r.collectionPath(projectID), body)
+	path, err := r.collectionPath(ctx, projectID)
+	if err != nil {
+		resp.Diagnostics.AddError("Resolving workspace path", err.Error())
+		return
+	}
+	respBody, err := r.client.Do(ctx, "POST", path, body)
 	if err != nil {
 		resp.Diagnostics.AddError("Creating feature_flag", err.Error())
 		return
@@ -174,7 +180,12 @@ func (r *FeatureFlagResource) Read(ctx context.Context, req resource.ReadRequest
 		resp.Diagnostics.AddError("Reading feature_flag id", err.Error())
 		return
 	}
-	respBody, err := r.client.Do(ctx, "GET", r.instancePath(projectID, id), nil)
+	path, err := r.instancePath(ctx, projectID, id)
+	if err != nil {
+		resp.Diagnostics.AddError("Resolving workspace path", err.Error())
+		return
+	}
+	respBody, err := r.client.Do(ctx, "GET", path, nil)
 	if err != nil {
 		if apiErr, ok := err.(*client.APIError); ok && apiErr.StatusCode == 404 {
 			resp.State.RemoveResource(ctx)
@@ -214,7 +225,12 @@ func (r *FeatureFlagResource) Update(ctx context.Context, req resource.UpdateReq
 		resp.Diagnostics.AddError("Encoding feature_flag request", err.Error())
 		return
 	}
-	respBody, err := r.client.Do(ctx, "PUT", r.instancePath(projectID, id), body)
+	path, err := r.instancePath(ctx, projectID, id)
+	if err != nil {
+		resp.Diagnostics.AddError("Resolving workspace path", err.Error())
+		return
+	}
+	respBody, err := r.client.Do(ctx, "PUT", path, body)
 	if err != nil {
 		resp.Diagnostics.AddError("Updating feature_flag", err.Error())
 		return
@@ -239,7 +255,12 @@ func (r *FeatureFlagResource) Delete(ctx context.Context, req resource.DeleteReq
 		return
 	}
 	// DELETE may return a JSON body (Mixpanel convention); Do tolerates it.
-	if _, err := r.client.Do(ctx, "DELETE", r.instancePath(projectID, id), nil); err != nil {
+	path, err := r.instancePath(ctx, projectID, id)
+	if err != nil {
+		resp.Diagnostics.AddError("Resolving workspace path", err.Error())
+		return
+	}
+	if _, err := r.client.Do(ctx, "DELETE", path, nil); err != nil {
 		if apiErr, ok := err.(*client.APIError); ok && apiErr.StatusCode == 404 {
 			return
 		}

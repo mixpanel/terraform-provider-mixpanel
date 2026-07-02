@@ -90,7 +90,7 @@ func (r *CustomAlertResource) Create(ctx context.Context, req resource.CreateReq
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding custom_alert request", err.Error())
 		return
@@ -155,7 +155,7 @@ func (r *CustomAlertResource) Update(ctx context.Context, req resource.UpdateReq
 		resp.Diagnostics.AddError("Reading custom_alert id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding custom_alert request", err.Error())
 		return

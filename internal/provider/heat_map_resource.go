@@ -92,7 +92,7 @@ func (r *HeatMapResource) Create(ctx context.Context, req resource.CreateRequest
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding heat_map request", err.Error())
 		return
@@ -157,7 +157,7 @@ func (r *HeatMapResource) Update(ctx context.Context, req resource.UpdateRequest
 		resp.Diagnostics.AddError("Reading heat_map id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding heat_map request", err.Error())
 		return

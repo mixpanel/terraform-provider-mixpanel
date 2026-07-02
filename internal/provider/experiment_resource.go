@@ -92,7 +92,7 @@ func (r *ExperimentResource) Create(ctx context.Context, req resource.CreateRequ
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding experiment request", err.Error())
 		return
@@ -157,7 +157,7 @@ func (r *ExperimentResource) Update(ctx context.Context, req resource.UpdateRequ
 		resp.Diagnostics.AddError("Reading experiment id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding experiment request", err.Error())
 		return

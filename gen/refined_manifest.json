@@ -629,6 +629,27 @@
     },
     {
       "keep": true,
+      "resource_name": "lookup_table",
+      "short": "lookup_tables",
+      "id_attr": "id",
+      "read_schema": "LookupTableResult",
+      "create_req_schema": "CrudLookupTableJsonRequest",
+      "update_req_schema": "CrudLookupTableJsonRequest",
+      "collection": "/api/app/projects/{project_id}/data-definitions/lookup-tables",
+      "instance": "/api/app/projects/{project_id}/data-definitions/lookup-tables",
+      "update": "patch",
+      "delete": "delete",
+      "jsonencode_fields": [],
+      "collapse_fields": [
+        "data-group-id"
+      ],
+      "project_scoped": true,
+      "enveloped": true,
+      "drop_reason": "",
+      "notes": "Lookup table resource with async upload workflow. POST creates table metadata and returns uploadId, then client obtains signed upload URL via /upload-url?uploadId=X, uploads CSV to that URL (S3/GCS), and polls /upload-status?uploadId=X until upload completes. PATCH updates metadata (name/description), DELETE removes table. read_schema=LookupTableResult (id is data-group id as string). create_req_schema=CrudLookupTableJsonRequest has name, data-group-id, data-group-ids, mark-ready fields. collapse_fields: data-group-id is anyOf[integer,string,null]. The upload handshake (create\u2192upload-url\u2192PUT CSV\u2192poll status\u2192mark-ready) requires custom CRUD implementation in OVERRIDES - see gen/LOOKUP_TABLE_IMPLEMENTATION_NOTES.md for details. Production demand: Medium (supports data enrichment via CSV uploads)."
+    },
+    {
+      "keep": true,
       "short": "business_context",
       "resource_name": "business_context",
       "id_attr": "id",

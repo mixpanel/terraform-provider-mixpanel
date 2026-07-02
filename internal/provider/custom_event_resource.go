@@ -88,7 +88,7 @@ func (r *CustomEventResource) Create(ctx context.Context, req resource.CreateReq
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding custom_event request", err.Error())
 		return
@@ -153,7 +153,7 @@ func (r *CustomEventResource) Update(ctx context.Context, req resource.UpdateReq
 		resp.Diagnostics.AddError("Reading custom_event id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding custom_event request", err.Error())
 		return

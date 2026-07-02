@@ -89,7 +89,7 @@ func (r *ServiceAccountResource) Create(ctx context.Context, req resource.Create
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding service_account request", err.Error())
 		return

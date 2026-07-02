@@ -89,7 +89,7 @@ func (r *BusinessContextResource) Create(ctx context.Context, req resource.Creat
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding business_context request", err.Error())
 		return
@@ -146,7 +146,7 @@ func (r *BusinessContextResource) Update(ctx context.Context, req resource.Updat
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding business_context request", err.Error())
 		return

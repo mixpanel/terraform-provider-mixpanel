@@ -230,38 +230,99 @@ func calculateBackoff(attempt int) time.Duration {
 // is JSON-encoded. The raw response body bytes are returned for 2xx responses
 // (callers typically pass them through UnwrapEnvelope). DELETE that returns JSON
 // (the Mixpanel convention, not 204) is handled like any other 2xx.
+//
+// Retry behavior:
+// - Retries on 408, 429, 500, 502, 503, 504 status codes
+// - Honors Retry-After header on 429, else uses jittered exponential backoff
+// - Caps at 5 retry attempts (6 total requests including the initial attempt)
+// - 4xx errors (except 408/429) are terminal and not retried
+// - Network errors and timeouts are retried
 func (c *Client) Do(ctx context.Context, method, path string, body any) ([]byte, error) {
-	var reqBody io.Reader
+	var bodyBytes []byte
 	if body != nil {
 		buf, err := json.Marshal(body)
 		if err != nil {
 			return nil, fmt.Errorf("encoding request body: %w", err)
 		}
-		reqBody = bytes.NewReader(buf)
+		bodyBytes = buf
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, c.URL(path), reqBody)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Accept", "application/json")
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	req.SetBasicAuth(c.ServiceAccount, c.ServiceSecret)
+	var lastErr error
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		// Recreate request body reader for each attempt
+		var reqBody io.Reader
+		if bodyBytes != nil {
+			reqBody = bytes.NewReader(bodyBytes)
+		}
 
-	resp, err := c.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
+		req, err := http.NewRequestWithContext(ctx, method, c.URL(path), reqBody)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Accept", "application/json")
+		if body != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		req.SetBasicAuth(c.ServiceAccount, c.ServiceSecret)
 
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("reading response body: %w", err)
-	}
+		resp, err := c.HTTPClient.Do(req)
+		if err != nil {
+			// Network error - retry if we haven't exhausted attempts
+			lastErr = err
+			if attempt < maxRetries {
+				delay := calculateBackoff(attempt)
+				select {
+				case <-time.After(delay):
+					continue
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+			}
+			return nil, err
+		}
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		respBody, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			return nil, fmt.Errorf("reading response body: %w", err)
+		}
+
+		// Success - return immediately
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			return respBody, nil
+		}
+
+		// Check if this is a retryable error
+		if isRetryableStatus(resp.StatusCode) && attempt < maxRetries {
+			var delay time.Duration
+			if resp.StatusCode == http.StatusTooManyRequests {
+				// Honor Retry-After header on 429
+				if retryAfter := parseRetryAfter(resp); retryAfter > 0 {
+					delay = retryAfter
+				} else {
+					delay = calculateBackoff(attempt)
+				}
+			} else {
+				// Use exponential backoff for 5xx errors
+				delay = calculateBackoff(attempt)
+			}
+
+			lastErr = &APIError{
+				Method:     method,
+				Path:       path,
+				StatusCode: resp.StatusCode,
+				Body:       string(respBody),
+			}
+
+			select {
+			case <-time.After(delay):
+				continue
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+
+		// Non-retryable error or exhausted retries - return error immediately
 		return nil, &APIError{
 			Method:     method,
 			Path:       path,
@@ -269,8 +330,19 @@ func (c *Client) Do(ctx context.Context, method, path string, body any) ([]byte,
 			Body:       string(respBody),
 		}
 	}
-	return respBody, nil
+
+	// Exhausted retries
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, &APIError{
+		Method:     method,
+		Path:       path,
+		StatusCode: 0,
+		Body:       "exhausted retries",
+	}
 }
+
 
 // DoForm performs an HTTP request whose body is application/x-www-form-urlencoded.
 // A handful of legacy Mixpanel App API endpoints (e.g. custom_events) read their
@@ -281,6 +353,7 @@ func (c *Client) Do(ctx context.Context, method, path string, body any) ([]byte,
 // (these endpoints json.loads such fields server-side, e.g. `alternatives`).
 //
 // The raw response body bytes are returned for 2xx responses, matching Do.
+// Retry behavior is the same as Do (see Do documentation for details).
 func (c *Client) DoForm(ctx context.Context, method, path string, values map[string]any) ([]byte, error) {
 	form := url.Values{}
 	// Deterministic field order keeps requests reproducible.
@@ -305,25 +378,76 @@ func (c *Client) DoForm(ctx context.Context, method, path string, values map[str
 		}
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, c.URL(path), strings.NewReader(form.Encode()))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.SetBasicAuth(c.ServiceAccount, c.ServiceSecret)
+	formEncoded := form.Encode()
+	var lastErr error
 
-	resp, err := c.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, method, c.URL(path), strings.NewReader(formEncoded))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.SetBasicAuth(c.ServiceAccount, c.ServiceSecret)
 
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("reading response body: %w", err)
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		resp, err := c.HTTPClient.Do(req)
+		if err != nil {
+			// Network error - retry if we haven't exhausted attempts
+			lastErr = err
+			if attempt < maxRetries {
+				delay := calculateBackoff(attempt)
+				select {
+				case <-time.After(delay):
+					continue
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+			}
+			return nil, err
+		}
+
+		respBody, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			return nil, fmt.Errorf("reading response body: %w", err)
+		}
+
+		// Success - return immediately
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			return respBody, nil
+		}
+
+		// Check if this is a retryable error
+		if isRetryableStatus(resp.StatusCode) && attempt < maxRetries {
+			var delay time.Duration
+			if resp.StatusCode == http.StatusTooManyRequests {
+				// Honor Retry-After header on 429
+				if retryAfter := parseRetryAfter(resp); retryAfter > 0 {
+					delay = retryAfter
+				} else {
+					delay = calculateBackoff(attempt)
+				}
+			} else {
+				// Use exponential backoff for 5xx errors
+				delay = calculateBackoff(attempt)
+			}
+
+			lastErr = &APIError{
+				Method:     method,
+				Path:       path,
+				StatusCode: resp.StatusCode,
+				Body:       string(respBody),
+			}
+
+			select {
+			case <-time.After(delay):
+				continue
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+
+		// Non-retryable error or exhausted retries
 		return nil, &APIError{
 			Method:     method,
 			Path:       path,
@@ -331,8 +455,19 @@ func (c *Client) DoForm(ctx context.Context, method, path string, values map[str
 			Body:       string(respBody),
 		}
 	}
-	return respBody, nil
+
+	// Exhausted retries
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, &APIError{
+		Method:     method,
+		Path:       path,
+		StatusCode: 0,
+		Body:       "exhausted retries",
+	}
 }
+
 
 // DoJSON performs Do and unmarshals the 2xx response body into out (if non-nil).
 func (c *Client) DoJSON(ctx context.Context, method, path string, body, out any) error {

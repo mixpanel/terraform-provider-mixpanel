@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"sync"
 )
 
 // workspaceListEntry is the subset of the workspace list payload we rely on.
@@ -83,4 +84,53 @@ func normalizeWorkspaceID(n json.Number) string {
 		return f.Text('f', -1)
 	}
 	return n.String()
+}
+
+// WorkspacePathBuilder builds workspace-scoped paths with caching and thread-safety.
+// It memoizes workspace resolution per project to avoid repeated API calls, using
+// a mutex-protected cache to prevent data races.
+type WorkspacePathBuilder struct {
+	client *Client
+	cache  map[string]string
+	mu     sync.RWMutex
+}
+
+// NewWorkspacePathBuilder creates a new workspace path builder.
+func NewWorkspacePathBuilder(c *Client) *WorkspacePathBuilder {
+	return &WorkspacePathBuilder{
+		client: c,
+		cache:  make(map[string]string),
+	}
+}
+
+// WorkspaceID returns the canonical workspace ID for a project, with caching.
+// Returns error if workspace resolution fails instead of silently returning empty string.
+func (w *WorkspacePathBuilder) WorkspaceID(ctx context.Context, projectID string) (string, error) {
+	// Check cache with read lock
+	w.mu.RLock()
+	if ws, ok := w.cache[projectID]; ok && ws != "" {
+		w.mu.RUnlock()
+		return ws, nil
+	}
+	w.mu.RUnlock()
+
+	// Resolve workspace with full lock
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	// Double-check after acquiring write lock (another goroutine may have populated it)
+	if ws, ok := w.cache[projectID]; ok && ws != "" {
+		return ws, nil
+	}
+
+	ws, err := w.client.DefaultWorkspaceID(ctx, projectID)
+	if err != nil {
+		return "", err
+	}
+	if ws == "" {
+		return "", fmt.Errorf("no workspace found for project %s", projectID)
+	}
+
+	w.cache[projectID] = ws
+	return ws, nil
 }

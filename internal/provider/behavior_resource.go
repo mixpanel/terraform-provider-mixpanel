@@ -90,7 +90,7 @@ func (r *BehaviorResource) Create(ctx context.Context, req resource.CreateReques
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding behavior request", err.Error())
 		return
@@ -172,7 +172,7 @@ func (r *BehaviorResource) Update(ctx context.Context, req resource.UpdateReques
 		resp.Diagnostics.AddError("Reading behavior id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding behavior request", err.Error())
 		return

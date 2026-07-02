@@ -153,6 +153,23 @@ func (r *ProjectResource) Update(ctx context.Context, req resource.UpdateRequest
 	// and this method is never reached for a real diff. It remains as a defensive
 	// backstop: fail loudly rather than silently copy the plan into state (which
 	// would report success while leaving the server unchanged).
+
+	// Task #4: Explicitly check for name changes and provide clear error message.
+	// The backend RPC lifecycle marks name as ForceNew which destroys the project.
+	oldName, _ := stringAttrFromRaw(req.State.Raw, "name")
+	newName, _ := stringAttrFromRaw(req.Plan.Raw, "name")
+	if oldName != newName {
+		resp.Diagnostics.AddError(
+			"project name cannot be changed",
+			fmt.Sprintf("Changing the project name from %q to %q is not supported. "+
+				"The Mixpanel API does not provide an update endpoint for project names. "+
+				"Attempting to rename would destroy and recreate the project, losing all data. "+
+				"To rename a project, you must manually rename it in the Mixpanel UI, "+
+				"then run 'terraform refresh' to sync the state.", oldName, newName),
+		)
+		return
+	}
+
 	resp.Diagnostics.AddError(
 		"project does not support in-place update",
 		"This resource's API has no update operation; changing an attribute replaces the resource. "+

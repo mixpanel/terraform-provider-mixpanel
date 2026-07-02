@@ -89,7 +89,7 @@ func (r *HeatMapCollectionResource) Create(ctx context.Context, req resource.Cre
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding heat_map_collection request", err.Error())
 		return
@@ -154,7 +154,7 @@ func (r *HeatMapCollectionResource) Update(ctx context.Context, req resource.Upd
 		resp.Diagnostics.AddError("Reading heat_map_collection id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding heat_map_collection request", err.Error())
 		return

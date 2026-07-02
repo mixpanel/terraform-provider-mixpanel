@@ -85,7 +85,7 @@ func (r *RollupProjectResource) Create(ctx context.Context, req resource.CreateR
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding rollup_project request", err.Error())
 		return
@@ -150,7 +150,7 @@ func (r *RollupProjectResource) Update(ctx context.Context, req resource.UpdateR
 		resp.Diagnostics.AddError("Reading rollup_project id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding rollup_project request", err.Error())
 		return

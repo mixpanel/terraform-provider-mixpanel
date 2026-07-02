@@ -88,7 +88,7 @@ func (r *DashboardResource) Create(ctx context.Context, req resource.CreateReque
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding dashboard request", err.Error())
 		return
@@ -153,7 +153,7 @@ func (r *DashboardResource) Update(ctx context.Context, req resource.UpdateReque
 		resp.Diagnostics.AddError("Reading dashboard id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding dashboard request", err.Error())
 		return

@@ -90,7 +90,7 @@ func (r *BookmarkResource) Create(ctx context.Context, req resource.CreateReques
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding bookmark request", err.Error())
 		return
@@ -155,7 +155,7 @@ func (r *BookmarkResource) Update(ctx context.Context, req resource.UpdateReques
 		resp.Diagnostics.AddError("Reading bookmark id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding bookmark request", err.Error())
 		return
