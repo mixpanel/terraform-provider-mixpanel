@@ -452,34 +452,45 @@ func RawFromWireMerged(schemaType tftypes.Type, base tftypes.Value, wire map[str
 			vals[name] = tv
 			continue
 		}
-		// Preserve a non-null planned value verbatim, but ONLY when it is fully
-		// known (no nested unknowns) AND it is NOT a jsonencode attribute.
-		// A container attribute (object/list) whose leaves are Computed (e.g.
-		// ruleset.variants[].is_sticky / screenshot) is IsKnown()==true at the
-		// top even while those leaves are still unknown "(known after apply)";
-		// preserving it verbatim would leave the unknowns in state and trip
-		// Terraform's "invalid result object after apply" check. Falling through
-		// rebuilds the attribute from the API response, which has the
-		// server-resolved values.
+		// Check if the wire response includes this attribute.
+		wireValue, wireHasValue := wire[spec.wireKey(name)]
+		wirePresent := wireHasValue && wireValue != nil
+
+		// Preserve a non-null planned value verbatim when it is fully known
+		// (no nested unknowns). A container attribute (object/list) whose leaves
+		// are Computed (e.g. ruleset.variants[].is_sticky / screenshot) is
+		// IsKnown()==true at the top even while those leaves are still unknown
+		// "(known after apply)"; preserving it verbatim would leave the unknowns
+		// in state and trip Terraform's "invalid result object after apply" check.
+		// Falling through rebuilds the attribute from the API response, which has
+		// the server-resolved values.
 		//
-		// jsonencode attributes are EXCLUDED from plan preservation because:
-		// 1. During Read (base is prior state), preserving them disables drift
-		//    detection — external changes to the JSON blob are invisible.
-		// 2. Semantic JSON equality is handled at the framework level via
-		//    jsontypes.Normalized, which normalizes key order and whitespace.
-		// 3. During Create/Update, the API response is authoritative (it may
-		//    enrich/normalize the planned JSON), so we must use the response.
-		if pv, present := planAttrs[name]; present && !pv.IsNull() && fullyKnown(pv) && !spec.JSONEncodeAttrs[name] {
-			vals[name] = pv
-			continue
+		// jsonencode attributes are treated specially:
+		// 1. If the wire response includes the field, use the wire value (the API
+		//    response is authoritative and may enrich/normalize the planned JSON).
+		// 2. If the wire response does NOT include the field, preserve the plan
+		//    value (the API doesn't echo the field back, so we must preserve the
+		//    user's input to avoid clobbering it to null).
+		// This enables drift detection when the API does return the field (external
+		// changes are visible), while preserving user input when the API omits it
+		// (no permanent post-refresh diff). Semantic JSON equality is handled at
+		// the framework level via jsontypes.Normalized.
+		pv, havePlan := planAttrs[name]
+		if havePlan && !pv.IsNull() && fullyKnown(pv) {
+			isJSONEncode := spec.JSONEncodeAttrs[name]
+			// For jsonencode attrs: preserve plan ONLY when wire doesn't have it.
+			// For regular attrs: always preserve the plan.
+			if !isJSONEncode || !wirePresent {
+				vals[name] = pv
+				continue
+			}
 		}
-		// Otherwise fill from the API response (null when absent).
-		raw, present := wire[spec.wireKey(name)]
-		if !present || raw == nil {
+		// Fill from the API response (null when absent).
+		if !wirePresent {
 			vals[name] = tftypes.NewValue(at, nil)
 			continue
 		}
-		tv, err := tfFromNative(at, raw, spec.JSONEncodeAttrs[name])
+		tv, err := tfFromNative(at, wireValue, spec.JSONEncodeAttrs[name])
 		if err != nil {
 			return tftypes.Value{}, fmt.Errorf("attr %q: %w", name, err)
 		}
