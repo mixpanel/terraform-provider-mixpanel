@@ -10,18 +10,41 @@ import (
 )
 
 func TestAccFormula_lifecycle(t *testing.T) {
-	srv := newMockServer(t, mockOpts{enveloped: true, idField: "id", stringID: false, resultsMap: false, upsert: false, listCreate: false})
+	// The /metrics endpoints return enveloped single-entry id->object maps
+	// (results_map) on create/get/update, verified against the live API.
+	srv := newMockServer(t, mockOpts{enveloped: true, idField: "id", stringID: false, resultsMap: true, upsert: false, listCreate: false})
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testProtoV6,
 		Steps: []resource.TestStep{
 			{
 				// Create; the implicit post-apply refresh+plan asserts idempotency.
+				// The definition is a real FormulaMetricDefinition (formula
+				// expression + referencedMetrics) accepted by the live API.
 				Config: providerConfig(srv.URL, `
 resource "mixpanel_formula" "test" {
   name = "tf-acc-test"
   type = "formula"
-  definition = "tf-acc-test"
+  definition = jsonencode({
+    formula = {
+      definition = "A"
+      referencedMetrics = [{
+        display = {}
+        behavior = {
+          name         = "Viewed report"
+          type         = "event"
+          search       = ""
+          dataset      = "$mixpanel"
+          filters      = []
+          resourceType = "events"
+        }
+        measurement = {
+          math       = "unique"
+          cumulative = false
+        }
+      }]
+    }
+  })
   project_id = 1
 }`),
 			},
@@ -31,7 +54,26 @@ resource "mixpanel_formula" "test" {
 resource "mixpanel_formula" "test" {
   name = "tf-acc-renamed"
   type = "formula"
-  definition = "tf-acc-test"
+  definition = jsonencode({
+    formula = {
+      definition = "A"
+      referencedMetrics = [{
+        display = {}
+        behavior = {
+          name         = "Viewed report"
+          type         = "event"
+          search       = ""
+          dataset      = "$mixpanel"
+          filters      = []
+          resourceType = "events"
+        }
+        measurement = {
+          math       = "unique"
+          cumulative = false
+        }
+      }]
+    }
+  })
   project_id = 1
 }`),
 				ConfigPlanChecks: resource.ConfigPlanChecks{

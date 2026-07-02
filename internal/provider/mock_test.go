@@ -74,6 +74,11 @@ type mockOpts struct {
 	resultsMap bool   // shape results as {id: obj} (themes_to_dict_map convention)
 	upsert     bool   // create POSTs to an instance path with a config-supplied id
 	listCreate bool   // create response is a list the provider selects from (collection-body-id)
+	// singletonGet models a per-project singleton (business_context, settings):
+	// the collection GET returns the single stored object directly (or an empty
+	// object when nothing is stored yet), never a list — matching APIResponse
+	// views that return results={...} for the project's one settings row.
+	singletonGet bool
 	// createIDField, when set and different from idField, is the field name the
 	// CREATE response carries the server-assigned id under. A read_after_create
 	// entity whose create response is a flat id-bearing object can return the id
@@ -184,6 +189,16 @@ func (m *mockServer) handle(w http.ResponseWriter, r *http.Request) {
 		id := lastSegment(r.URL.Path)
 		if obj, ok := m.store[id]; ok {
 			m.respond(w, id, obj)
+			return
+		}
+		if m.opts.singletonGet {
+			// Per-project singleton: the collection GET returns the one stored
+			// object (or an empty object before first write), never a list.
+			for _, o := range m.store {
+				m.respondValue(w, o)
+				return
+			}
+			m.respondValue(w, map[string]any{})
 			return
 		}
 		// Collection GET (read-from-list entities): return every stored object.

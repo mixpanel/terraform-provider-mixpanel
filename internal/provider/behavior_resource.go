@@ -100,27 +100,19 @@ func (r *BehaviorResource) Create(ctx context.Context, req resource.CreateReques
 		resp.Diagnostics.AddError("Creating behavior", err.Error())
 		return
 	}
-	// The create response is a FLAT id-bearing object (possibly inside a single-
-	// element results list); extract the server-assigned id from it.
-	id, err := flatCreateID(respBody, true, "id")
+	// The create response is enveloped and carries results as a single-entry
+	// id->object map keyed by the new behavior id (verified live:
+	// {"status":"ok","results":{"<id>":{"id":<id>,...}}}); the inner object is
+	// the same behaviors_to_dict_map body the instance GET returns, so it is
+	// used directly as the canonical state (no read-back needed).
+	wire, err := unwrapBehavior(respBody)
 	if err != nil {
 		resp.Diagnostics.AddError("Decoding behavior create response", err.Error())
 		return
 	}
+	id := idForBehavior(wire)
 	if id == "" {
-		resp.Diagnostics.AddError("Creating behavior", "create response did not contain an id at id")
-		return
-	}
-	// Read back the canonical body via the instance GET so state matches the read
-	// schema (the create response shape differs from it).
-	getBody, err := r.client.Do(ctx, "GET", r.instancePath(projectID, id), nil)
-	if err != nil {
-		resp.Diagnostics.AddError("Reading behavior after create", err.Error())
-		return
-	}
-	wire, err := unwrapBehavior(getBody)
-	if err != nil {
-		resp.Diagnostics.AddError("Decoding behavior response", err.Error())
+		resp.Diagnostics.AddError("Creating behavior", "create response did not contain an id")
 		return
 	}
 	r.writeBehaviorState(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, id)
@@ -256,10 +248,13 @@ func idForBehavior(wire map[string]any) string {
 }
 
 // unwrapBehavior unwraps the API envelope (when enveloped) and returns the body map.
+// All behaviors responses (create/get/update/delete) return results as a
+// single-entry id->object map (behaviors_to_dict_map, verified live), so the
+// results-map unwrap is enabled; the inner object carries its own integer "id".
 func unwrapBehavior(respBody []byte) (map[string]any, error) {
 	body, err := unwrapBody(respBody, true)
 	if err != nil {
 		return nil, err
 	}
-	return unwrapResultsMap(body, false), nil
+	return unwrapResultsMap(body, true), nil
 }

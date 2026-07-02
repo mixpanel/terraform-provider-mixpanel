@@ -5,6 +5,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -182,14 +183,34 @@ func (r *FormulaResource) Delete(ctx context.Context, req resource.DeleteRequest
 		resp.Diagnostics.AddError("Reading formula id", err.Error())
 		return
 	}
-	// DELETE may return a JSON body (Mixpanel convention); Do tolerates it.
-	if _, err := r.client.Do(ctx, "DELETE", r.instancePath(projectID, id), nil); err != nil {
+	// The metrics instance DELETE is not implemented by the API (verified live:
+	// DELETE /api/app/projects/{pid}/metrics/{id} returns 501 NOT IMPLEMENTED).
+	// Formulas are removed via the BULK delete on the collection path with the
+	// ids in the request body:
+	//   DELETE /api/app/projects/{pid}/metrics  {"metrics":[{"id":<id>}]}
+	// which responds {"status":"ok","results":{}} and silently skips ids that no
+	// longer exist (soft delete filters id__in), so an already-deleted formula
+	// destroys cleanly. A 404 (project/path gone) is likewise treated as success.
+	delBody := map[string]any{
+		"metrics": []any{map[string]any{"id": formulaBulkDeleteID(id)}},
+	}
+	if _, err := r.client.Do(ctx, "DELETE", r.collectionPath(projectID), delBody); err != nil {
 		if apiErr, ok := err.(*client.APIError); ok && apiErr.StatusCode == 404 {
 			return
 		}
 		resp.Diagnostics.AddError("Deleting formula", err.Error())
 		return
 	}
+}
+
+// formulaBulkDeleteID renders the state id (a decimal string) as the JSON type
+// the bulk metrics DELETE expects (a number), falling back to the raw string
+// for non-numeric ids.
+func formulaBulkDeleteID(id string) any {
+	if n, err := strconv.ParseInt(id, 10, 64); err == nil {
+		return n
+	}
+	return id
 }
 
 func (r *FormulaResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
@@ -238,10 +259,14 @@ func idForFormula(wire map[string]any) string {
 }
 
 // unwrapFormula unwraps the API envelope (when enveloped) and returns the body map.
+// The /metrics endpoints (shared with mixpanel_metric) return results as a
+// single-entry id->object map on create/get/update (verified live:
+// {"status":"ok","results":{"<id>":{"id":<id>,...}}}), so the results-map
+// unwrap is enabled, matching unwrapMetric.
 func unwrapFormula(respBody []byte) (map[string]any, error) {
 	body, err := unwrapBody(respBody, true)
 	if err != nil {
 		return nil, err
 	}
-	return unwrapResultsMap(body, false), nil
+	return unwrapResultsMap(body, true), nil
 }

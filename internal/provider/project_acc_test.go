@@ -55,7 +55,7 @@ resource "mixpanel_project" "test" {
 	})
 }
 
-func TestAccProject_renameDestroysProject(t *testing.T) {
+func TestAccProject_renameInPlace(t *testing.T) {
 	skipIfNotAcceptance(t)
 
 	name := accRandomName("tf-acc-project-rename")
@@ -64,6 +64,8 @@ func TestAccProject_renameDestroysProject(t *testing.T) {
 	if orgID == "" {
 		t.Skip("MIXPANEL_ORGANIZATION_ID required for project tests")
 	}
+
+	var createdID string
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testProtoV6,
@@ -80,12 +82,19 @@ resource "mixpanel_project" "test" {
 `, name, orgID),
 				Check: resource.ComposeTestCheckFunc(
 					accCheckResourceExists("mixpanel_project.test"),
+					func(s *terraform.State) error {
+						rs := s.RootModule().Resources["mixpanel_project.test"]
+						createdID = rs.Primary.Attributes["id"]
+						return nil
+					},
 				),
 			},
 			{
-				// CRITICAL TEST: Rename should trigger replacement, not update
-				// Per gaps-and-gotchas §5.4: "Project rename destroys the project"
-				// This is the single highest-stakes line in the provider.
+				// CRITICAL TEST: renaming a project must be an in-place update via
+				// POST /projects/update/{id}/, NEVER a replace. A replace would run
+				// Delete (RPC delete-projects), destroying the project and ALL of
+				// its analytics data. Per gaps-and-gotchas §5.4 this is the single
+				// highest-stakes line in the provider.
 				Config: accProviderConfig("") + fmt.Sprintf(`
 resource "mixpanel_project" "test" {
   name            = %q
@@ -94,10 +103,19 @@ resource "mixpanel_project" "test" {
 `, nameUpdated, orgID),
 				ConfigPlanChecks: resource.ConfigPlanChecks{
 					PreApply: []plancheck.PlanCheck{
-						// Name is ForceNew, so this should be a replace action
-						plancheck.ExpectResourceAction("mixpanel_project.test", plancheck.ResourceActionReplace),
+						plancheck.ExpectResourceAction("mixpanel_project.test", plancheck.ResourceActionUpdate),
 					},
 				},
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("mixpanel_project.test", "name", nameUpdated),
+					func(s *terraform.State) error {
+						rs := s.RootModule().Resources["mixpanel_project.test"]
+						if got := rs.Primary.Attributes["id"]; got != createdID {
+							return fmt.Errorf("project id changed across rename: %s -> %s (rename must not replace the project)", createdID, got)
+						}
+						return nil
+					},
+				),
 			},
 		},
 	})

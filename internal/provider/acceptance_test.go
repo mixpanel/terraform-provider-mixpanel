@@ -186,7 +186,10 @@ func accTestPreCheck(t *testing.T) {
 	}
 
 	if len(missing) > 0 {
-		t.Fatalf("Acceptance tests require the following environment variables: %s", strings.Join(missing, ", "))
+		// Skip rather than fail: TF_ACC=1 alone runs the mock-server tier;
+		// the live tier additionally needs credentials. Failing here would
+		// make the mock tier unrunnable without live credentials.
+		t.Skipf("Skipping live acceptance test; missing environment variables: %s", strings.Join(missing, ", "))
 	}
 }
 

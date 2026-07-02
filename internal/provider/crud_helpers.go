@@ -126,8 +126,23 @@ func stabilizeComputed(attrs map[string]schema.Attribute) {
 	}
 }
 
+// bodySnippet renders a short prefix of a response body for error messages, so
+// a shape surprise (HTML proxy page, changed envelope) is diagnosable without
+// dumping an unbounded payload into a diagnostic.
+func bodySnippet(body []byte) string {
+	s := strings.TrimSpace(string(body))
+	const max = 200
+	if len(s) > max {
+		return s[:max] + "..."
+	}
+	return s
+}
+
 // unwrapBody optionally unwraps the BaseOkResponseModel envelope and decodes the
-// (unenveloped) body into a map. A non-object body yields an empty map.
+// (unenveloped) body into a map. An empty or JSON-null body yields an empty map
+// (some write endpoints return no entity); any other non-object body is an
+// error — silently mapping it to an empty map would flow an empty id (and empty
+// attributes) downstream and corrupt state.
 func unwrapBody(respBody []byte, enveloped bool) (map[string]any, error) {
 	body := respBody
 	if enveloped {
@@ -137,15 +152,18 @@ func unwrapBody(respBody []byte, enveloped bool) (map[string]any, error) {
 		}
 		body = inner
 	}
-	if len(body) == 0 {
+	trimmed := strings.TrimSpace(string(body))
+	if len(trimmed) == 0 || trimmed == "null" || trimmed == "[]" {
+		// Empty body, JSON null, and an empty array are all legitimate
+		// "no entity here yet" responses (singleton settings collections
+		// return [] before first write). Non-empty arrays still error below.
 		return map[string]any{}, nil
 	}
 	var m map[string]any
 	dec := json.NewDecoder(strings.NewReader(string(body)))
 	dec.UseNumber()
 	if err := dec.Decode(&m); err != nil {
-		// Body was not a JSON object (e.g. bare value); nothing to map.
-		return map[string]any{}, nil
+		return nil, fmt.Errorf("expected a JSON object response body, got: %s", bodySnippet(body))
 	}
 	return normalizeNumbers(m).(map[string]any), nil
 }
@@ -155,7 +173,11 @@ func unwrapBody(respBody []byte, enveloped bool) (map[string]any, error) {
 // object, injecting the map key as a synthetic "id" so the standard id path
 // (nestedID(wire,"id")) and the state merge see the real entity body. When
 // resultsMap is false, or the body is not exactly a single {key: object} pair,
-// the body is returned unchanged so non-map entities are unaffected.
+// the body is returned unchanged so non-map entities are unaffected. (The
+// unchanged-body fallback is safe against state eviction: an unexpected shape
+// leaves the id lookup downstream to fail loudly rather than reporting the
+// resource as gone. The signature is fixed by generated callers, so a shape
+// surprise cannot be returned as an error from here.)
 func unwrapResultsMap(body map[string]any, resultsMap bool) map[string]any {
 	if !resultsMap || len(body) != 1 {
 		return body
@@ -182,9 +204,20 @@ func unwrapResultsMap(body map[string]any, resultsMap bool) map[string]any {
 // findInList selects, from a collection GET response, the single object whose
 // identity value (at dottedPath, default "id") string-equals wantID. The body is
 // optionally unwrapped from the BaseOkResponseModel envelope; the unwrapped value
-// must be a JSON array of objects (the Mixpanel list convention). Returns the
-// matched object as a normalized map, a found flag, and any decode error. This is
-// the read path for entities that expose no instance GET route (read-from-list).
+// may be a JSON array of objects (the common Mixpanel list convention) or a JSON
+// map of id -> object (the themes_to_dict_map convention). This is the read path
+// for entities that expose no instance GET route (read-from-list).
+//
+// The three outcomes are strictly distinguished, because callers treat
+// found=false as "the resource is gone" and evict it from state:
+//
+//   - FOUND: the matched object, found=true, nil error.
+//   - DEFINITELY ABSENT: the body is a well-formed array/map of objects and
+//     wantID is genuinely not present -> nil, found=false, nil error.
+//   - UNDETERMINED: the body is not a recognizable list shape (empty body,
+//     HTML proxy page, changed envelope, bare value) -> a non-nil error. It is
+//     NEVER reported as found=false, since that would remove the resource from
+//     state and cause a duplicate creation on the next apply.
 func findInList(respBody []byte, enveloped bool, dottedPath, wantID string) (map[string]any, bool, error) {
 	body := respBody
 	if enveloped {
@@ -194,27 +227,74 @@ func findInList(respBody []byte, enveloped bool, dottedPath, wantID string) (map
 		}
 		body = inner
 	}
-	if len(body) == 0 {
-		return nil, false, nil
+	if len(body) == 0 || strings.TrimSpace(string(body)) == "null" {
+		// An empty list is `[]`, never an empty/null body: we cannot tell whether
+		// the entity is gone, so surface an error instead of evicting state.
+		return nil, false, fmt.Errorf("empty list response body: cannot determine whether id %q still exists", wantID)
 	}
+	// JSON array of objects (the common list shape).
 	var arr []any
 	dec := json.NewDecoder(strings.NewReader(string(body)))
 	dec.UseNumber()
-	if err := dec.Decode(&arr); err != nil {
-		// Not a JSON array (e.g. an object/bare value); nothing to select.
-		return nil, false, nil
-	}
-	for _, e := range arr {
-		m, ok := e.(map[string]any)
-		if !ok {
-			continue
+	if err := dec.Decode(&arr); err == nil {
+		sawObject := false
+		for _, e := range arr {
+			m, ok := e.(map[string]any)
+			if !ok {
+				continue
+			}
+			sawObject = true
+			nm := normalizeNumbers(m).(map[string]any)
+			if got, ok := nestedID(nm, dottedPath); ok && got == wantID {
+				return nm, true, nil
+			}
 		}
-		nm := normalizeNumbers(m).(map[string]any)
-		if got, ok := nestedID(nm, dottedPath); ok && got == wantID {
-			return nm, true, nil
+		if len(arr) == 0 || sawObject {
+			// An empty array, or an array of objects without the id: the
+			// listing is well-formed and the entity is definitely absent.
+			return nil, false, nil
+		}
+		// A non-empty array with no object elements is not a listing we
+		// understand; fall through to the undetermined error.
+	} else {
+		// Not an array: try a JSON map of id -> object (themes_to_dict_map
+		// convention). Every value must be an object for the body to count as a
+		// well-formed listing; anything else is an unexpected shape and
+		// therefore undetermined.
+		var mm map[string]any
+		dec = json.NewDecoder(strings.NewReader(string(body)))
+		dec.UseNumber()
+		if err := dec.Decode(&mm); err == nil && mm != nil {
+			allObjects := true
+			for k, v := range mm {
+				inner, ok := v.(map[string]any)
+				if !ok {
+					allObjects = false
+					break
+				}
+				nm := normalizeNumbers(inner).(map[string]any)
+				if got, ok := nestedID(nm, dottedPath); ok && got == wantID {
+					return nm, true, nil
+				}
+				if k == wantID {
+					// The map key is the identity; inject it (top-level paths only)
+					// so downstream id extraction (nestedID(wire, dottedPath)) sees it.
+					out := make(map[string]any, len(nm)+1)
+					for ik, iv := range nm {
+						out[ik] = iv
+					}
+					if _, has := out[dottedPath]; !has && !strings.Contains(dottedPath, ".") {
+						out[dottedPath] = k
+					}
+					return out, true, nil
+				}
+			}
+			if allObjects {
+				return nil, false, nil
+			}
 		}
 	}
-	return nil, false, nil
+	return nil, false, fmt.Errorf("unexpected list response shape while looking for id %q (expected a JSON array or map of objects), got: %s", wantID, bodySnippet(body))
 }
 
 // collectIDsFromList unwraps a collection GET response (optionally enveloped) into
@@ -232,16 +312,17 @@ func collectIDsFromList(respBody []byte, enveloped bool, dottedPath string) ([]s
 		body = inner
 	}
 	out := []string{}
-	if len(body) == 0 {
+	if len(body) == 0 || strings.TrimSpace(string(body)) == "null" {
 		return out, nil
 	}
 	var arr []any
 	dec := json.NewDecoder(strings.NewReader(string(body)))
 	dec.UseNumber()
 	if err := dec.Decode(&arr); err != nil {
-		// Not a JSON array (unexpected for these endpoints) -- return empty, not
-		// error, so an empty/odd list yields zero ids rather than failing the plan.
-		return out, nil
+		// Not a JSON array: an HTML proxy page or a changed envelope must not be
+		// silently reported as an empty listing (a wrong-but-plausible answer);
+		// surface the shape surprise instead.
+		return nil, fmt.Errorf("unexpected list response shape (expected a JSON array), got: %s", bodySnippet(body))
 	}
 	for _, e := range arr {
 		m, ok := e.(map[string]any)
@@ -273,6 +354,14 @@ func compositeImportID(projectID, id string) string {
 // is unique by its match attribute (duplicates are rejected server-side); when more
 // than one historically matched, the largest id is the just-created one. Returns
 // the matched object, its id rendered as a string, and any decode error.
+//
+// CAVEAT: when multiple entries match matchAttr, the largest-id heuristic is
+// applied SILENTLY. It is correct immediately after a create (the newest row has
+// the highest id), but if the server ever allows duplicates by matchAttr, an
+// older row could be shadowed with no signal. There is no logging facility in
+// this package (no tflog usage, and the generated call sites fix the signature
+// without a context), so this remains a documented heuristic rather than a
+// warned one.
 func selectNewestFromList(respBody []byte, enveloped bool, dottedPath, matchAttr, matchVal string) (map[string]any, string, error) {
 	body := respBody
 	if enveloped {
@@ -405,8 +494,11 @@ func flatCreateID(respBody []byte, enveloped bool, dottedPath string) (string, e
 	return "", nil
 }
 
-// normalizeNumbers converts json.Number values produced by UseNumber back to
-// float64 so the generic tftypes bridge sees a uniform numeric type.
+// normalizeNumbers converts json.Number values produced by UseNumber into
+// concrete numeric types for the generic tftypes bridge. Integers are kept as
+// int64 — converting them through Float64 corrupts ids above 2^53 (real case:
+// dataGroupId), silently changing the identity in state. Non-integers fall back
+// to float64, and anything unparsable keeps its literal string form.
 func normalizeNumbers(v any) any {
 	switch x := v.(type) {
 	case map[string]any:
@@ -420,6 +512,9 @@ func normalizeNumbers(v any) any {
 		}
 		return x
 	case json.Number:
+		if i, err := x.Int64(); err == nil {
+			return i
+		}
 		if f, err := x.Float64(); err == nil {
 			return f
 		}
@@ -480,6 +575,9 @@ func nestedID(wire map[string]any, dottedPath string) (string, bool) {
 	switch x := cur.(type) {
 	case string:
 		return x, true
+	case int64:
+		// Large integer ids preserved exactly by normalizeNumbers (> 2^53).
+		return strconv.FormatInt(x, 10), true
 	case float64:
 		return big.NewFloat(x).Text('f', -1), true
 	default:

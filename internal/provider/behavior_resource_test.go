@@ -9,16 +9,33 @@ import (
 )
 
 func TestAccBehavior_lifecycle(t *testing.T) {
-	srv := newMockServer(t, mockOpts{enveloped: true, idField: "behavior_id", stringID: false, resultsMap: false, upsert: false, listCreate: false, createIDField: "id"})
+	// All behaviors responses are enveloped single-entry id->object maps
+	// (behaviors_to_dict_map) whose inner object carries integer "id", verified
+	// against the live API; the provider maps that id to the behavior_id attr.
+	srv := newMockServer(t, mockOpts{enveloped: true, idField: "id", stringID: false, resultsMap: true, upsert: false, listCreate: false})
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testProtoV6,
 		Steps: []resource.TestStep{
 			{
 				// Create; the implicit post-apply refresh+plan asserts idempotency.
+				// name/type/definition mirror a payload the live API accepted
+				// (type must be one of the model choices retention|funnel|simple;
+				// definition wraps a Behavior show clause under "behavior").
 				Config: providerConfig(srv.URL, `
 resource "mixpanel_behavior" "test" {
-
+  name = "tf-acc-test"
+  type = "simple"
+  definition = jsonencode({
+    behavior = {
+      name         = "Viewed report"
+      type         = "event"
+      search       = ""
+      dataset      = "$mixpanel"
+      filters      = []
+      resourceType = "events"
+    }
+  })
 }`),
 			},
 			{

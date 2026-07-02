@@ -474,15 +474,17 @@ ID_JSON_PATH = {
 }
 
 # Entities that get a plural "list" data source (mixpanel_<entity>s). Restricted to
-# the GREEN-10: a clean enveloped `results` array whose items each carry the identity
+# the GREEN-12: a clean enveloped `results` array whose items each carry the identity
 # attr. The list path is ent["collection"] (already workspace-resolved for
 # feature_flag via OVERRIDES). import_ids are "<project_id>:<id>" composites that
 # the resource ImportState parser consumes directly.
 LIST_DATASOURCES = {
     "agent_flow",
     "annotation",
+    "cohort",
     "custom_role",
     "custom_property",
+    "custom_event",
     "experiment",
     "feature_flag",
     "custom_alert",
@@ -3474,7 +3476,7 @@ def main():
         open(path, "w").write(src)
         written.append(path)
 
-        # Plural "list" data source for the GREEN-10. The list path is the entity's
+        # Plural "list" data source for the GREEN-12. The list path is the entity's
         # collection (already workspace-resolved for feature_flag via OVERRIDES);
         # workspace-scoped entities resolve {workspace_id} at runtime.
         if name in LIST_DATASOURCES:

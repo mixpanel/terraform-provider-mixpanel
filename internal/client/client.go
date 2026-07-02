@@ -484,21 +484,54 @@ func (c *Client) DoJSON(ctx context.Context, method, path string, body, out any)
 	return nil
 }
 
-// baseOkResponse is the Mixpanel envelope: {"status": "ok", "results": <entity>}.
+// baseOkResponse is the Mixpanel envelope. On success the server sends
+// {"status": "ok", "results": <entity>}; on failure it sends
+// {"status": "error", "error": <message>} (webapp app_api/response.py), where
+// <message> is usually a string but can be a structured object (e.g. the
+// agentic endpoints return {"code": ..., "message": ...}). Some endpoints emit
+// the error envelope with HTTP 200, so the status field must be checked even
+// on a 2xx response.
 type baseOkResponse struct {
 	Status  string          `json:"status"`
 	Results json.RawMessage `json:"results"`
+	Error   json.RawMessage `json:"error"`
+}
+
+// envelopeErrorMessage renders the envelope `error` payload for humans: a JSON
+// string is unquoted, any other JSON value (object, array, number) is included
+// verbatim, and an absent/empty payload yields "".
+func envelopeErrorMessage(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s
+	}
+	return string(raw)
 }
 
 // UnwrapEnvelope extracts the `results` field of a BaseOkResponseModel response.
 // If the payload is not enveloped (no top-level `results`), the original bytes are
 // returned unchanged so it also works for the few endpoints that return the entity
 // at the root (e.g. SCIM, custom_event).
+//
+// A body that decodes as the envelope with status "error" is returned as an
+// error carrying the server's error message: several App API endpoints send
+// {"status":"error","error":...} with HTTP 200, which would otherwise be
+// silently treated as a success payload.
 func UnwrapEnvelope(respBody []byte) ([]byte, error) {
 	var env baseOkResponse
 	if err := json.Unmarshal(respBody, &env); err != nil {
 		// not an object / not enveloped — hand the raw bytes back
 		return respBody, nil
+	}
+	if env.Status == "error" {
+		msg := envelopeErrorMessage(env.Error)
+		if msg == "" {
+			msg = strings.TrimSpace(string(respBody))
+		}
+		return nil, fmt.Errorf("mixpanel API returned an error envelope (status %q): %s", env.Status, msg)
 	}
 	if env.Results == nil {
 		return respBody, nil
@@ -512,14 +545,14 @@ func (c *Client) DoUnwrap(ctx context.Context, method, path string, body, out an
 	if err != nil {
 		return err
 	}
-	if out == nil {
-		return nil
-	}
+	// Unwrap even when the caller discards the body (out == nil): an HTTP-200
+	// error envelope ({"status":"error",...}) must still fail the call.
 	inner, err := UnwrapEnvelope(respBody)
 	if err != nil {
-		return err
+		// Add the endpoint context so an HTTP-200 error envelope is attributable.
+		return fmt.Errorf("mixpanel API %s %s: %w", method, path, err)
 	}
-	if len(inner) == 0 {
+	if out == nil || len(inner) == 0 {
 		return nil
 	}
 	if err := json.Unmarshal(inner, out); err != nil {

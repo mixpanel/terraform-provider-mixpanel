@@ -539,6 +539,13 @@ func fullyKnown(v tftypes.Value) bool {
 // tfFromNative converts a native Go JSON value into a tftypes.Value of type t.
 // When jsonEncode is true, the native value is marshalled to a JSON string and
 // stored as a tftypes string (the jsonencode passthrough representation).
+//
+// A wire value whose JSON type does not match the schema type is an ERROR, not
+// a silent null: nulling a mismatched value would erase real server data from
+// state with no signal (and a null on a Computed attribute reads as "the server
+// cleared this"). The only deliberate exceptions are string targets (numeric-ish
+// ids are coerced to their string rendering) and empty-string numeric extras
+// (identity extras flow in as strings and an empty id means "absent").
 func tfFromNative(t tftypes.Type, v any, jsonEncode bool) (tftypes.Value, error) {
 	if jsonEncode {
 		if v == nil {
@@ -566,7 +573,7 @@ func tfFromNative(t tftypes.Type, v any, jsonEncode bool) (tftypes.Value, error)
 	case t.Is(tftypes.Bool):
 		b, ok := v.(bool)
 		if !ok {
-			return tftypes.NewValue(t, nil), nil
+			return tftypes.Value{}, fmt.Errorf("expected a JSON boolean for a bool attribute, got %T (%v)", v, v)
 		}
 		return tftypes.NewValue(tftypes.Bool, b), nil
 	case t.Is(tftypes.Number):
@@ -588,13 +595,18 @@ func tfFromNative(t tftypes.Type, v any, jsonEncode bool) (tftypes.Value, error)
 		case string:
 			// Identity values flow in from extras as strings even when the schema
 			// attribute is a Number (e.g. a numeric id rendered for the URL path).
+			// An empty string means "no id yet" and stays null; a non-empty,
+			// non-numeric string is a genuine type mismatch.
+			if n == "" {
+				return tftypes.NewValue(t, nil), nil
+			}
 			f, _, err := big.ParseFloat(n, 10, 512, big.ToNearestEven)
 			if err != nil {
-				return tftypes.NewValue(t, nil), nil
+				return tftypes.Value{}, fmt.Errorf("expected a numeric value for a number attribute, got string %q", n)
 			}
 			return tftypes.NewValue(tftypes.Number, f), nil
 		default:
-			return tftypes.NewValue(t, nil), nil
+			return tftypes.Value{}, fmt.Errorf("expected a JSON number for a number attribute, got %T (%v)", v, v)
 		}
 	case t.Is(tftypes.DynamicPseudoType):
 		return tftypes.NewValue(t, nil), nil
@@ -604,7 +616,7 @@ func tfFromNative(t tftypes.Type, v any, jsonEncode bool) (tftypes.Value, error)
 	case tftypes.Object:
 		m, ok := v.(map[string]any)
 		if !ok {
-			return tftypes.NewValue(t, nil), nil
+			return tftypes.Value{}, fmt.Errorf("expected a JSON object for an object attribute, got %T (%v)", v, v)
 		}
 		vals := make(map[string]tftypes.Value, len(tt.AttributeTypes))
 		for name, at := range tt.AttributeTypes {
@@ -623,7 +635,7 @@ func tfFromNative(t tftypes.Type, v any, jsonEncode bool) (tftypes.Value, error)
 	case tftypes.Map:
 		m, ok := v.(map[string]any)
 		if !ok {
-			return tftypes.NewValue(t, nil), nil
+			return tftypes.Value{}, fmt.Errorf("expected a JSON object for a map attribute, got %T (%v)", v, v)
 		}
 		vals := make(map[string]tftypes.Value, len(m))
 		for k, ev := range m {
@@ -637,7 +649,7 @@ func tfFromNative(t tftypes.Type, v any, jsonEncode bool) (tftypes.Value, error)
 	case tftypes.List:
 		arr, ok := v.([]any)
 		if !ok {
-			return tftypes.NewValue(t, nil), nil
+			return tftypes.Value{}, fmt.Errorf("expected a JSON array for a list attribute, got %T (%v)", v, v)
 		}
 		vals := make([]tftypes.Value, 0, len(arr))
 		for _, ev := range arr {
@@ -651,7 +663,7 @@ func tfFromNative(t tftypes.Type, v any, jsonEncode bool) (tftypes.Value, error)
 	case tftypes.Set:
 		arr, ok := v.([]any)
 		if !ok {
-			return tftypes.NewValue(t, nil), nil
+			return tftypes.Value{}, fmt.Errorf("expected a JSON array for a set attribute, got %T (%v)", v, v)
 		}
 		vals := make([]tftypes.Value, 0, len(arr))
 		for _, ev := range arr {
@@ -665,7 +677,7 @@ func tfFromNative(t tftypes.Type, v any, jsonEncode bool) (tftypes.Value, error)
 	case tftypes.Tuple:
 		arr, ok := v.([]any)
 		if !ok {
-			return tftypes.NewValue(t, nil), nil
+			return tftypes.Value{}, fmt.Errorf("expected a JSON array for a tuple attribute, got %T (%v)", v, v)
 		}
 		vals := make([]tftypes.Value, 0, len(tt.ElementTypes))
 		for i, et := range tt.ElementTypes {
@@ -681,7 +693,7 @@ func tfFromNative(t tftypes.Type, v any, jsonEncode bool) (tftypes.Value, error)
 		}
 		return tftypes.NewValue(tt, vals), nil
 	default:
-		return tftypes.NewValue(t, nil), nil
+		return tftypes.Value{}, fmt.Errorf("unsupported schema type %s", t.String())
 	}
 }
 
