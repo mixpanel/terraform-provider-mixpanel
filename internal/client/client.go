@@ -10,9 +10,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -20,6 +23,14 @@ import (
 // DefaultBaseURL is the Mixpanel API host. Paths are appended to it, e.g.
 // /api/app/projects/{project_id}/dashboards.
 const DefaultBaseURL = "https://mixpanel.com"
+
+// Retry configuration constants
+const (
+	maxRetries   = 5                // Maximum number of retry attempts
+	baseBackoff  = 1 * time.Second  // Base delay for exponential backoff
+	maxBackoff   = 60 * time.Second // Maximum delay for exponential backoff
+	jitterFactor = 0.1              // Jitter factor (10% of delay)
+)
 
 // Client talks to the Mixpanel App API with service-account Basic auth.
 type Client struct {
@@ -149,6 +160,70 @@ func (e *APIError) Error() string {
 			"permission on this organization. Use a service account that is an admin/owner of the org."
 	}
 	return msg
+}
+
+// isRetryableStatus returns true if the HTTP status code is retryable.
+// Retries on:
+// - 408 Request Timeout
+// - 429 Too Many Requests (rate limit)
+// - 500 Internal Server Error
+// - 502 Bad Gateway
+// - 503 Service Unavailable
+// - 504 Gateway Timeout
+//
+// Does NOT retry on:
+// - 4xx errors (client errors) except 408/429 - these are terminal
+func isRetryableStatus(statusCode int) bool {
+	switch statusCode {
+	case http.StatusRequestTimeout, // 408
+		http.StatusTooManyRequests,     // 429
+		http.StatusInternalServerError, // 500
+		http.StatusBadGateway,          // 502
+		http.StatusServiceUnavailable,  // 503
+		http.StatusGatewayTimeout:      // 504
+		return true
+	default:
+		return false
+	}
+}
+
+// parseRetryAfter parses the Retry-After header from an HTTP response.
+// It supports both delay-seconds (integer) and HTTP-date formats.
+// Returns the delay duration, or 0 if the header is not present or invalid.
+func parseRetryAfter(resp *http.Response) time.Duration {
+	retryAfter := resp.Header.Get("Retry-After")
+	if retryAfter == "" {
+		return 0
+	}
+
+	// Try parsing as delay-seconds (integer)
+	if seconds, err := strconv.ParseInt(retryAfter, 10, 64); err == nil {
+		return time.Duration(seconds) * time.Second
+	}
+
+	// Try parsing as HTTP-date
+	if t, err := http.ParseTime(retryAfter); err == nil {
+		delay := time.Until(t)
+		if delay > 0 {
+			return delay
+		}
+	}
+
+	return 0
+}
+
+// calculateBackoff calculates the exponential backoff delay with jitter.
+// Uses exponential backoff starting at 1 second, doubling each attempt up to
+// a maximum of 60 seconds. Adds 0-10% random jitter to prevent thundering herd.
+//
+// Formula: min(1.0 * 2^attempt, 60.0) + random(0, delay * 0.1)
+func calculateBackoff(attempt int) time.Duration {
+	delay := baseBackoff * time.Duration(math.Pow(2, float64(attempt)))
+	if delay > maxBackoff {
+		delay = maxBackoff
+	}
+	jitter := time.Duration(rand.Float64() * float64(delay) * jitterFactor)
+	return delay + jitter
 }
 
 // Do performs an HTTP request against an absolute API path. If body is non-nil it
