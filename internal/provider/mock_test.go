@@ -104,6 +104,9 @@ type mockServer struct {
 	mu      sync.Mutex
 	store   map[string]map[string]any
 	counter int
+	// shares holds shared-entities project shares keyed by
+	// "<entity_type>/<entity_id>" -> project id -> canEdit. See handleSharedEntities.
+	shares map[string]map[string]bool
 }
 
 // newMockServer starts an echo server and registers cleanup. idField defaults to
@@ -113,7 +116,7 @@ func newMockServer(t *testing.T, opts mockOpts) *mockServer {
 	if opts.idField == "" {
 		opts.idField = "id"
 	}
-	m := &mockServer{opts: opts, store: map[string]map[string]any{}, counter: 1000}
+	m := &mockServer{opts: opts, store: map[string]map[string]any{}, counter: 1000, shares: map[string]map[string]bool{}}
 	m.Server = httptest.NewServer(http.HandlerFunc(m.handle))
 	t.Cleanup(m.Close)
 	return m
@@ -129,6 +132,16 @@ func (m *mockServer) handle(w http.ResponseWriter, r *http.Request) {
 				map[string]any{"id": 1.0, "is_global": true, "is_default": true, "name": "All Project Data"},
 			},
 		})
+		return
+	}
+
+	// Shared-entities routes (project sharing; see sharing.go). Handled before
+	// the generic CRUD switch so POST .../upsert and .../delete are not
+	// mistaken for entity creates. Additive: entity CRUD is unaffected.
+	if idx := strings.Index(r.URL.Path, "/shared-entities/"); idx >= 0 {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		m.handleSharedEntities(w, r, r.URL.Path[idx+len("/shared-entities/"):])
 		return
 	}
 
@@ -226,6 +239,78 @@ func (m *mockServer) handle(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 	}
+}
+
+// handleSharedEntities models the shared-entities API (always enveloped,
+// regardless of the entity's own envelope contract — matching the real API,
+// verified live 2026-07-02):
+//
+//	POST .../shared-entities/{type}/{id}/upsert  {"id":e,"projectShares":[{"id":p,"canEdit":b}]}
+//	POST .../shared-entities/{type}/{id}/delete  {"id":e,"projectShares":[p]}
+//	GET  .../shared-entities/{type}/{id}         -> results.projectShares
+//
+// rest is the path remainder after "/shared-entities/". Caller holds m.mu.
+func (m *mockServer) handleSharedEntities(w http.ResponseWriter, r *http.Request, rest string) {
+	segs := strings.Split(strings.Trim(rest, "/"), "/")
+	if len(segs) < 2 {
+		http.Error(w, `{"status":"error","error":"bad shared-entities path"}`, http.StatusNotFound)
+		return
+	}
+	key := segs[0] + "/" + segs[1]
+	action := ""
+	if len(segs) > 2 {
+		action = segs[2]
+	}
+	switch {
+	case r.Method == http.MethodPost && action == "upsert":
+		body := m.parseBody(r)
+		shares, _ := body["projectShares"].([]any)
+		if m.shares[key] == nil {
+			m.shares[key] = map[string]bool{}
+		}
+		for _, s := range shares {
+			obj, ok := s.(map[string]any)
+			if !ok {
+				continue
+			}
+			canEdit, _ := obj["canEdit"].(bool)
+			m.shares[key][idToKey(obj["id"])] = canEdit
+		}
+		m.respondShares(w, key, segs[1])
+	case r.Method == http.MethodPost && action == "delete":
+		body := m.parseBody(r)
+		ids, _ := body["projectShares"].([]any)
+		for _, id := range ids {
+			delete(m.shares[key], idToKey(id))
+		}
+		m.respondShares(w, key, segs[1])
+	case r.Method == http.MethodGet && action == "":
+		m.respondShares(w, key, segs[1])
+	default:
+		http.Error(w, `{"status":"error","error":"method not allowed"}`, http.StatusMethodNotAllowed)
+	}
+}
+
+// respondShares writes the shared-entities dict for one entity (always
+// enveloped, like the real endpoint).
+func (m *mockServer) respondShares(w http.ResponseWriter, key, entityID string) {
+	projectShares := make([]any, 0, len(m.shares[key]))
+	for pid, canEdit := range m.shares[key] {
+		var idVal any = pid
+		if f, err := strconv.ParseFloat(pid, 64); err == nil {
+			idVal = f
+		}
+		projectShares = append(projectShares, map[string]any{"id": idVal, "canEdit": canEdit})
+	}
+	writeJSON(w, map[string]any{
+		"status": "ok",
+		"results": map[string]any{
+			"id":            entityID,
+			"userShares":    []any{},
+			"teamShares":    []any{},
+			"projectShares": projectShares,
+		},
+	})
 }
 
 // handleRPC answers the org-scoped RPC lifecycle (project): create-<plural>,

@@ -36,6 +36,10 @@ func NewLexiconTagResource() resource.Resource {
 
 type LexiconTagResource struct {
 	client *client.Client
+	// workspacePathBuilder resolves the canonical workspace per project (cached,
+	// thread-safe) so data-definitions calls can target the workspace mount the
+	// Mixpanel UI uses (same pick order as feature_flag: global, default, first).
+	workspacePathBuilder *client.WorkspacePathBuilder
 }
 
 func (r *LexiconTagResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -61,6 +65,7 @@ func (r *LexiconTagResource) Configure(ctx context.Context, req resource.Configu
 		return
 	}
 	r.client = c
+	r.workspacePathBuilder = client.NewWorkspacePathBuilder(c)
 }
 
 // projectID resolves the project from the lexicon_tag project_id attribute (if any)
@@ -73,12 +78,51 @@ func (r *LexiconTagResource) projectID(ctx context.Context, raw tftypes.Value) (
 	return r.client.ProjectID(""), nil
 }
 
-func (r *LexiconTagResource) collectionPath(projectID string) string {
-	return strings.NewReplacer("{project_id}", projectID).Replace("/api/app/projects/{project_id}/data-definitions/tags")
+// dataDefinitionsBases returns the ordered data-definitions base paths to try
+// for a project. The webapp mounts the same data-definitions urlconf on BOTH
+// /api/app/projects/{project_id}/data-definitions (app_api/projects/urls.py)
+// and /api/app/workspaces/{workspace_id}/data-definitions
+// (app_api/workspaces/urls.py); both variants address the same project-keyed
+// rows. The Mixpanel UI (appApiUrl) addresses the workspace mount whenever the
+// project has workspaces, and the backend counts project-mount calls on
+// workspace-enabled projects as "workspace.unexpected-project-url", so the
+// provider prefers the workspace mount, resolving the canonical workspace with
+// the same pick order feature_flag uses (global, then default, then first).
+// The project mount is kept as a fallback: it is the only mount for projects
+// without workspaces, and the workspace mount 404s before reaching the view
+// when the caller is not a member of the resolved workspace (live-verified;
+// service-account users are membership-checked like any other user).
+func (r *LexiconTagResource) dataDefinitionsBases(ctx context.Context, projectID string) []string {
+	projectBase := "/api/app/projects/" + projectID + "/data-definitions"
+	if r.workspacePathBuilder != nil {
+		if wid, err := r.workspacePathBuilder.WorkspaceID(ctx, projectID); err == nil && wid != "" {
+			return []string{"/api/app/workspaces/" + wid + "/data-definitions", projectBase}
+		}
+	}
+	return []string{projectBase}
 }
 
-func (r *LexiconTagResource) instancePath(projectID, id string) string {
-	return strings.NewReplacer("{project_id}", projectID, "{tag_id}", id).Replace("/api/app/projects/{project_id}/data-definitions/tags/{tag_id}")
+// doDataDefinitions issues one data-definitions request, preferring the
+// workspace mount and retrying the project mount on 404. The workspace-mount
+// membership check rejects non-members with 404 before the view runs, so no
+// side effect has occurred when the retry fires; both mounts hit identical
+// storage, so a genuine not-found 404s on the fallback too and surfaces as the
+// final error.
+func (r *LexiconTagResource) doDataDefinitions(ctx context.Context, method, projectID, suffix string, body any) ([]byte, error) {
+	bases := r.dataDefinitionsBases(ctx, projectID)
+	var lastErr error
+	for i, base := range bases {
+		respBody, err := r.client.Do(ctx, method, base+suffix, body)
+		if err == nil {
+			return respBody, nil
+		}
+		lastErr = err
+		if apiErr, ok := err.(*client.APIError); ok && apiErr.StatusCode == 404 && i < len(bases)-1 {
+			continue
+		}
+		return nil, err
+	}
+	return nil, lastErr
 }
 
 func (r *LexiconTagResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -93,7 +137,7 @@ func (r *LexiconTagResource) Create(ctx context.Context, req resource.CreateRequ
 		resp.Diagnostics.AddError("Encoding lexicon_tag request", err.Error())
 		return
 	}
-	respBody, err := r.client.Do(ctx, "POST", r.collectionPath(projectID), body)
+	respBody, err := r.doDataDefinitions(ctx, "POST", projectID, "/tags", body)
 	if err != nil {
 		resp.Diagnostics.AddError("Creating lexicon_tag", err.Error())
 		return
@@ -118,7 +162,7 @@ func (r *LexiconTagResource) Read(ctx context.Context, req resource.ReadRequest,
 		resp.Diagnostics.AddError("Reading lexicon_tag id", err.Error())
 		return
 	}
-	respBody, err := r.client.Do(ctx, "GET", r.instancePath(projectID, id), nil)
+	respBody, err := r.doDataDefinitions(ctx, "GET", projectID, "/tags/"+id, nil)
 	if err != nil {
 		if apiErr, ok := err.(*client.APIError); ok && apiErr.StatusCode == 404 {
 			resp.State.RemoveResource(ctx)
@@ -158,7 +202,7 @@ func (r *LexiconTagResource) Update(ctx context.Context, req resource.UpdateRequ
 		resp.Diagnostics.AddError("Encoding lexicon_tag request", err.Error())
 		return
 	}
-	respBody, err := r.client.Do(ctx, "PATCH", r.instancePath(projectID, id), body)
+	respBody, err := r.doDataDefinitions(ctx, "PATCH", projectID, "/tags/"+id, body)
 	if err != nil {
 		resp.Diagnostics.AddError("Updating lexicon_tag", err.Error())
 		return
@@ -183,7 +227,7 @@ func (r *LexiconTagResource) Delete(ctx context.Context, req resource.DeleteRequ
 		return
 	}
 	// DELETE may return a JSON body (Mixpanel convention); Do tolerates it.
-	if _, err := r.client.Do(ctx, "DELETE", r.instancePath(projectID, id), nil); err != nil {
+	if _, err := r.doDataDefinitions(ctx, "DELETE", projectID, "/tags/"+id, nil); err != nil {
 		if apiErr, ok := err.(*client.APIError); ok && apiErr.StatusCode == 404 {
 			return
 		}

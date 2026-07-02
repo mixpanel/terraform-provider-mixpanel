@@ -30,6 +30,7 @@ description: |-
 - `name` (String)
 - `params` (String)
 - `prev_bookmark_url_slug` (String)
+- `share_with_project` (Boolean) Whether to share this entity with the whole project after creation. Entities created by a service account are otherwise visible only to that service account. Defaults to `true`. See the [Entity sharing guide](../guides/sharing.md).
 - `type` (String)
 - `v` (String)
 

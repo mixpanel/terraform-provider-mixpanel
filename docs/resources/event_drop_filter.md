@@ -9,6 +9,17 @@ description: |-
 
 Manages a Mixpanel event drop filter.
 
+~> **Workspace routing.** When the project has workspaces, the provider issues
+drop-filter requests through the workspace-scoped mount
+(`/api/app/workspaces/{workspace_id}/data-definitions/...`) — the same route the
+Mixpanel web UI uses — targeting the project's canonical workspace (the global
+"All Project Data" workspace, else the default, else the first). Both the
+workspace and project mounts address the same project-keyed drop filters, so no
+data divergence occurs either way; if the credential is not a member of the
+canonical workspace (the workspace mount rejects non-members with a 404 before
+any change is made), the provider transparently falls back to the
+project-scoped mount. Projects without workspaces always use the project mount.
+
 ## Example Usage
 
 ```terraform

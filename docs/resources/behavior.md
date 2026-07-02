@@ -34,4 +34,5 @@ resource "mixpanel_behavior" "power_users" {
 - `description` (String)
 - `name` (String)
 - `project_id` (Number)
+- `share_with_project` (Boolean) Whether to share this entity with the whole project after creation. Entities created by a service account are otherwise visible only to that service account. Defaults to `true`. See the [Entity sharing guide](../guides/sharing.md).
 - `type` (String)

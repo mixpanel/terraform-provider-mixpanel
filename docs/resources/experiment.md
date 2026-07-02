@@ -31,6 +31,7 @@ description: |-
 - `metrics` (Attributes List) (see [below for nested schema](#nestedatt--metrics))
 - `results_cache` (String)
 - `settings` (String)
+- `share_with_project` (Boolean) Whether to share this entity with the whole project after creation. Entities created by a service account are otherwise visible only to that service account. Defaults to `true`. See the [Entity sharing guide](../guides/sharing.md).
 - `tags` (List of String)
 - `variants` (Attributes List) (see [below for nested schema](#nestedatt--variants))
 

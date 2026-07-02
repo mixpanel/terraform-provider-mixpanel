@@ -42,6 +42,7 @@ resource "mixpanel_metric" "signups" {
 - `metric_id` (Number)
 - `owned_by` (Attributes) (see [below for nested schema](#nestedatt--owned_by))
 - `project_id` (Number)
+- `share_with_project` (Boolean) Whether to share this entity with the whole project after creation. Entities created by a service account are otherwise visible only to that service account. Defaults to `true`. See the [Entity sharing guide](../guides/sharing.md).
 - `verified` (Boolean)
 
 ### Read-Only

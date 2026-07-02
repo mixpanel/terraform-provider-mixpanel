@@ -34,6 +34,7 @@ description: |-
 - `hash_salt` (String)
 - `is_experiment_active` (Boolean)
 - `reset_hash_salt` (Boolean)
+- `share_with_project` (Boolean) Whether to share this entity with the whole project after creation. Entities created by a service account are otherwise visible only to that service account. Defaults to `true`. See the [Entity sharing guide](../guides/sharing.md).
 - `status` (String)
 - `tags` (List of String)
 - `workspace_id` (Number)

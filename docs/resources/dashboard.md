@@ -30,6 +30,7 @@ description: |-
 - `is_restricted` (Boolean)
 - `project_id` (Number)
 - `rows` (Attributes List) (see [below for nested schema](#nestedatt--rows))
+- `share_with_project` (Boolean) Whether to share this entity with the whole project after creation. Entities created by a service account are otherwise visible only to that service account. Defaults to `true`. See the [Entity sharing guide](../guides/sharing.md).
 - `target_parent_dashboard_id` (Number)
 - `target_project_id` (Number)
 - `time_filter` (Attributes) Mirror of ``api-spec.yml#/components/schemas/TimeFilter``. (see [below for nested schema](#nestedatt--time_filter))

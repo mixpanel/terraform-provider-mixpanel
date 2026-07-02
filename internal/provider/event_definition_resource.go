@@ -85,6 +85,13 @@ func (r *EventDefinitionResource) projectID(ctx context.Context, raw tftypes.Val
 	return r.client.ProjectID(""), nil
 }
 
+// collectionPath returns the project-scoped event-definitions path. Unlike the
+// data-definitions urlconf (dual-mounted under both projects and workspaces),
+// the event-definitions module is mounted ONLY at
+// /api/app/projects/{project_id}/event-definitions (app_api/projects/urls.py);
+// app_api/workspaces/urls.py has no event-definitions include, and a live GET
+// on /api/app/workspaces/{workspace_id}/event-definitions returns a Django
+// 404. The project path is therefore the only valid mount for this entity.
 func (r *EventDefinitionResource) collectionPath(projectID string) string {
 	return strings.NewReplacer("{project_id}", projectID).Replace("/api/app/projects/{project_id}/event-definitions")
 }
