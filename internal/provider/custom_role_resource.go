@@ -153,7 +153,7 @@ func (r *CustomRoleResource) Update(ctx context.Context, req resource.UpdateRequ
 		resp.Diagnostics.AddError("Reading custom_role id", err.Error())
 		return
 	}
-	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForUpdate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding custom_role request", err.Error())
 		return

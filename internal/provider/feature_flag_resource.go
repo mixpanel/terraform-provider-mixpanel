@@ -425,7 +425,7 @@ func (r *FeatureFlagResource) Create(ctx context.Context, req resource.CreateReq
 		resp.Diagnostics.AddError("Conflicting feature_flag status configuration", msg)
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding feature_flag request", err.Error())
 		return
@@ -550,7 +550,7 @@ func (r *FeatureFlagResource) Update(ctx context.Context, req resource.UpdateReq
 		}
 		curArchived = false
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForUpdate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding feature_flag request", err.Error())
 		return
@@ -617,7 +617,7 @@ func (r *FeatureFlagResource) Delete(ctx context.Context, req resource.DeleteReq
 		return
 	}
 	if flagWireStatus(curWire) == flagStateEnabled && !flagWireArchived(curWire) {
-		body, berr := client.WireFromRaw(req.State.Raw, spec)
+		body, berr := client.WireFromRawForUpdate(req.State.Raw, spec)
 		if berr != nil {
 			resp.Diagnostics.AddError("Encoding feature_flag disable request", berr.Error())
 			return

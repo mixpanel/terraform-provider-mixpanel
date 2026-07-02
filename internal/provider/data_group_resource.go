@@ -153,7 +153,7 @@ func (r *DataGroupResource) Update(ctx context.Context, req resource.UpdateReque
 		resp.Diagnostics.AddError("Reading data_group id", err.Error())
 		return
 	}
-	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForUpdate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding data_group request", err.Error())
 		return

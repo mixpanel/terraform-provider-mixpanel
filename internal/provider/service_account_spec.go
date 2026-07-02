@@ -9,13 +9,15 @@ import "github.com/mixpanel/terraform-provider-mixpanel/internal/client"
 // by the service_account resource and data source.
 func ServiceAccountAttrSpec() client.AttrSpec {
 	return client.AttrSpec{
-		IDAttr:            "id",
-		ProjectIDAttr:     "organization_id",
-		PathParamAttrs:    map[string]bool{"serviceaccount_id": true},
-		JSONEncodeAttrs:   map[string]bool{},
-		JSONStringAttrs:   map[string]bool{},
-		JSONEncodeWireKey: map[string]string{"creator_email": "creator_email", "creator_name": "creator_name", "last_used": "last_used"},
-		OutputOnlyAttrs:   map[string]bool{"created": true, "creator": true, "creator_email": true, "creator_name": true, "expires": true, "last_used": true, "token": true, "user": true},
-		SpreadAttrs:       map[string]bool{},
+		IDAttr:              "id",
+		ProjectIDAttr:       "organization_id",
+		PathParamAttrs:      map[string]bool{"serviceaccount_id": true},
+		JSONEncodeAttrs:     map[string]bool{},
+		JSONStringAttrs:     map[string]bool{},
+		JSONEncodeWireKey:   map[string]string{"creator_email": "creator_email", "creator_name": "creator_name", "last_used": "last_used"},
+		OutputOnlyAttrs:     map[string]bool{"created": true, "creator": true, "creator_email": true, "creator_name": true, "expires": true, "last_used": true, "token": true, "user": true},
+		SpreadAttrs:         map[string]bool{},
+		CreateWritableAttrs: map[string]bool{"expires": true, "projects": true, "role": true, "username": true},
+		UpdateWritableAttrs: map[string]bool{},
 	}
 }

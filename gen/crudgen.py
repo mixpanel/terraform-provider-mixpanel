@@ -1211,6 +1211,182 @@ def wire_key_overrides_from_spec(merged, man):
     return overrides
 
 
+
+# ---------------------------------------------------------------------------
+# Writable-field allowlists (CreateWritableAttrs / UpdateWritableAttrs).
+#
+# The Mixpanel analytics validators are extra="forbid" / explicit-allowlist
+# almost everywhere: echoing read-only fields (id, created, can_*, counts) back
+# at a write endpoint returns 400. The bridge therefore filters create/update
+# bodies through per-entity allowlists derived from the entity's REQUEST
+# schemas in the frozen OpenAPI spec (which mirrors the webapp's voluptuous /
+# Pydantic request validators). Keys are Terraform attribute names.
+# ---------------------------------------------------------------------------
+
+# Entities whose write body must NOT be filtered. Value is the reason emitted
+# as a comment into the generated spec file.
+WRITABLE_BYPASS = {
+    # Spread entities: the body root carries variant-specific keys flattened out
+    # of a jsonencode attr; a TF-attr-keyed allowlist cannot describe them (the
+    # bridge also hard-bypasses filtering whenever SpreadAttrs is non-empty).
+    "warehouse_source": "polymorphic spread body (oneOf source variants flattened from `params`)",
+    # Settings singletons: the POST body is the INNER settings object (the
+    # single `settings` jsonencode attr's decoded value), so a top-level
+    # allowlist keyed by TF attrs cannot describe it. The server validates the
+    # inner fields itself (strict voluptuous schemas in organization/views.py).
+    "org_request_access_settings": "body is the inner `settings` object; the top-level filter does not apply",
+    "org_session_settings": "body is the inner `settings` object; the top-level filter does not apply",
+    "spark_settings": "body is the inner `settings` object; the top-level filter does not apply",
+    "twofactor_settings": "body is the inner `settings` object; the top-level filter does not apply",
+    # RPC-association lifecycle: hand-shaped {name-list}/{id-list} bodies.
+    "project": "RPC lifecycle bodies are hand-shaped (create-projects/delete-projects verbs)",
+}
+
+# Webapp-source-verified corrections that take precedence over the OpenAPI
+# derivation (the deployed voluptuous/manual allowlists diverge from the spec
+# export for these entities). Values are the FINAL Terraform attribute lists.
+# Sources: analytics/webapp/app_api/projects/<entity>/views.py (2026-07 audit).
+WRITABLE_OVERRIDES = {
+    # dashboards/validate.py validate_dashboard_update_fields: PREVENT_EXTRA over
+    # {title, description, filters, breakdowns, is_private, is_restricted,
+    #  card_order, time_filter, layout, content, global_access_type}; only the
+    # attrs that exist in the TF schema are listed. No field is required on
+    # PATCH (voluptuous default required=False).
+    "dashboard": {
+        "update": [
+            "card_order", "description", "filters", "global_access_type",
+            "is_private", "is_restricted", "time_filter", "title",
+        ],
+    },
+    # annotations/views.py PATCH branch: explicit allowlist {description, tags}
+    # (400 on anything else); date/user_id are create-only. The TF schema has no
+    # tags attribute.
+    "annotation": {
+        "update": ["description"],
+    },
+    # dashboard_reports/views.py email_digests_entry PATCH allowlist: 11 fields;
+    # schedule_timezone is create-only (rejected by the PATCH allowlist).
+    "email_digest": {
+        "update": [
+            "dashboard_id", "deleted", "monthly_week_ordinal", "name", "paused",
+            "recipients", "recur", "slack_subscriptions", "start_date", "tag",
+            "timezone",
+        ],
+    },
+    # organizations/service_accounts/views.py: the create JSON schema allows
+    # extras at the top level and the view additionally reads `expires`
+    # (views.py:149), which the frozen CreateServiceAccountRequest omits.
+    "service_account": {
+        "create": ["expires", "projects", "role", "username"],
+    },
+}
+
+
+def _request_body_props(merged, path, method):
+    """Union of top-level property names of the request body schema at
+    (path, method) in the merged OpenAPI spec, resolving $ref/allOf/anyOf/oneOf.
+    Returns None when the operation or its body schema is absent."""
+    if not merged or not path or not method:
+        return None
+    paths = merged.get("paths") or {}
+    # Route OVERRIDES may carry a trailing slash the spec paths lack (or vice
+    # versa); try both spellings.
+    op = None
+    for p in (path, path.rstrip("/"), path.rstrip("/") + "/"):
+        op = (paths.get(p) or {}).get(method)
+        if op:
+            break
+    if not isinstance(op, dict):
+        return None
+    content = ((op.get("requestBody") or {}).get("content")) or {}
+    for cd in content.values():
+        sch = cd.get("schema")
+        if not isinstance(sch, dict):
+            continue
+        schemas = (merged.get("components") or {}).get("schemas") or {}
+        ref = sch.get("$ref")
+        if ref:
+            props = _schema_props(schemas, ref.split("/")[-1])
+        else:
+            props = _props_of(sch, schemas, set())
+        return props or None
+    return None
+
+
+def writable_attr_sets(name, ent, man, merged, attr_names):
+    """Compute (create_writable, update_writable, bypass_reason) for one entity.
+
+    Each returned set contains Terraform attribute names (snake_case) that exist
+    in the entity's schema AND appear in the server's create/update request
+    schema. Wire property names are reverse-mapped through the entity's wire-key
+    overrides (camelCase APIs). Synthetic attributes (identity, scope, path
+    params) are excluded — the bridge strips them upstream. An empty set means
+    "no filtering" (bypass), used when the write surface is opaque or the frozen
+    spec carries no request schema for the operation.
+    """
+    if name in WRITABLE_BYPASS:
+        return set(), set(), WRITABLE_BYPASS[name]
+    if ent["top_spread"]:
+        return set(), set(), "polymorphic spread body"
+
+    # All TF attrs that can appear in a wire body: schema attrs plus injected
+    # jsonencode containers.
+    known = set(attr_names) | set(ent["inject_jsonencode"]) | set(ent["top_jsonencode"])
+    synthetic = {ent["identity_attr"], ent["id_param"], "project_id", "organization_id"}
+    wire_to_tf = {v: k for k, v in ent["wire_key_map"].items()}
+
+    def to_tf(props):
+        if not props:
+            return set()
+        out = set()
+        for p in props:
+            tf = wire_to_tf.get(p, snake(p))
+            if tf in known and tf not in synthetic:
+                out.add(tf)
+        return out
+
+    # Create request body: POST to collection, or POST/PUT to instance (upsert).
+    create_props = None
+    if ent["create_to_instance"]:
+        create_props = _request_body_props(
+            merged, ent["instance"], "post"
+        ) or _request_body_props(merged, ent["instance"], "put")
+    if create_props is None:
+        create_props = _request_body_props(merged, ent["collection"], "post")
+    if create_props is None and ent["instance"]:
+        create_props = _request_body_props(
+            merged, ent["instance"], "post"
+        ) or _request_body_props(merged, ent["instance"], "put")
+    # Some org-scoped/list-routed create schemas are named in the manifest but
+    # their path was pruned; fall back to the named component schema.
+    if create_props is None and man.get("create_req_schema"):
+        schemas = ((merged or {}).get("components") or {}).get("schemas") or {}
+        create_props = _schema_props(schemas, man["create_req_schema"]) or None
+
+    # Update request body: instance path + update verb (collection path for
+    # collection_body_id / singleton entities). Fall back to the create schema
+    # when the spec has no distinct update body (documented: create-shaped
+    # update), corrected by WRITABLE_OVERRIDES where the webapp diverges.
+    update_props = None
+    if ent["update"]:
+        upd_path = ent["instance"] or ent["collection"]
+        if ent["collection_body_id"] or ent["singleton"]:
+            upd_path = ent["collection"]
+        update_props = _request_body_props(merged, upd_path, ent["update"])
+        if update_props is None and ent["instance"] and upd_path != ent["collection"]:
+            update_props = _request_body_props(merged, ent["collection"], ent["update"])
+        if update_props is None:
+            update_props = create_props
+
+    create_w = to_tf(create_props)
+    update_w = to_tf(update_props)
+    ov = WRITABLE_OVERRIDES.get(name, {})
+    if "create" in ov:
+        create_w = set(ov["create"])
+    if "update" in ov:
+        update_w = set(ov["update"])
+    return create_w, update_w, ""
+
 def _prop_schema(schemas, schema_name, prop, _seen=None):
     """Resolve the schema dict for property `prop` within `schema_name`, following
     $ref / allOf / anyOf / oneOf one level deep. Returns None if not found."""
@@ -1483,7 +1659,7 @@ CREATE_COLLECTION = """	spec := {cls}AttrSpec()
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {{
 		resp.Diagnostics.AddError("Encoding {entity} request", err.Error())
 		return
@@ -1521,7 +1697,7 @@ CREATE_INSTANCE_UPSERT = """	spec := {cls}AttrSpec()
 		resp.Diagnostics.AddError("Creating {entity}", "{identity_attr} must be set in configuration (client-supplied id)")
 		return
 	}}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {{
 		resp.Diagnostics.AddError("Encoding {entity} request", err.Error())
 		return
@@ -1555,7 +1731,7 @@ CREATE_READ_AFTER = """	spec := {cls}AttrSpec()
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {{
 		resp.Diagnostics.AddError("Encoding {entity} request", err.Error())
 		return
@@ -1602,7 +1778,7 @@ UPDATE_PUT_PATCH = """	spec := {cls}AttrSpec()
 		resp.Diagnostics.AddError("Reading {entity} id", err.Error())
 		return
 	}}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForUpdate(req.Plan.Raw, spec)
 	if err != nil {{
 		resp.Diagnostics.AddError("Encoding {entity} request", err.Error())
 		return
@@ -1743,7 +1919,7 @@ CREATE_COLLECTION_BODY_ID = """	spec := {cls}AttrSpec()
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {{
 		resp.Diagnostics.AddError("Encoding {entity} request", err.Error())
 		return
@@ -1783,7 +1959,7 @@ UPDATE_COLLECTION_BODY_ID = """	spec := {cls}AttrSpec()
 		resp.Diagnostics.AddError("Reading {entity} id", err.Error())
 		return
 	}}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForUpdate(req.Plan.Raw, spec)
 	if err != nil {{
 		resp.Diagnostics.AddError("Encoding {entity} request", err.Error())
 		return
@@ -1842,7 +2018,7 @@ CREATE_SINGLETON = """	spec := {cls}AttrSpec()
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {{
 		resp.Diagnostics.AddError("Encoding {entity} request", err.Error())
 		return
@@ -1873,7 +2049,7 @@ UPDATE_SINGLETON = """	spec := {cls}AttrSpec()
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForUpdate(req.Plan.Raw, spec)
 	if err != nil {{
 		resp.Diagnostics.AddError("Encoding {entity} request", err.Error())
 		return
@@ -2023,7 +2199,7 @@ CREATE_SETTINGS_SINGLETON = """	spec := {cls}AttrSpec()
 		resp.Diagnostics.AddError("Resolving scope id", err.Error())
 		return
 	}}
-	full, err := client.WireFromRaw(req.Plan.Raw, spec)
+	full, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {{
 		resp.Diagnostics.AddError("Encoding {entity} request", err.Error())
 		return
@@ -2059,7 +2235,7 @@ UPDATE_SETTINGS_SINGLETON = """	spec := {cls}AttrSpec()
 		resp.Diagnostics.AddError("Resolving scope id", err.Error())
 		return
 	}}
-	full, err := client.WireFromRaw(req.Plan.Raw, spec)
+	full, err := client.WireFromRawForUpdate(req.Plan.Raw, spec)
 	if err != nil {{
 		resp.Diagnostics.AddError("Encoding {entity} request", err.Error())
 		return
@@ -2415,7 +2591,7 @@ func {cls}AttrSpec() client.AttrSpec {{
 		JSONEncodeWireKey: map[string]string{{ {wire_key_set} }},
 		OutputOnlyAttrs:  map[string]bool{{ {output_only_set} }},
 		SpreadAttrs:      map[string]bool{{ {spread_set} }},
-	}}
+{writable_block}	}}
 }}
 """
 
@@ -3002,6 +3178,33 @@ def main():
             '"%s": true' % f for f in sorted(ent["output_only"])
         )
         spread_set = ", ".join('"%s": true' % f for f in ent["top_spread"])
+        # Writable-field allowlists derived from the entity's create/update
+        # request schemas (see writable_attr_sets). Empty sets bypass filtering;
+        # a bypass reason is emitted as a comment so the intent is auditable.
+        create_w, update_w, bypass_reason = writable_attr_sets(
+            name, ent, man, merged, attr_names
+        )
+        create_w_set = ", ".join('"%s": true' % f for f in sorted(create_w))
+        update_w_set = ", ".join('"%s": true' % f for f in sorted(update_w))
+        if not bypass_reason and not create_w and not update_w:
+            if name not in res_specs:
+                bypass_reason = "data source only (no resource writes); nothing to filter"
+            else:
+                bypass_reason = (
+                    "no create/update request schema resolvable in the frozen spec"
+                )
+        writable_block = ""
+        if bypass_reason:
+            writable_block += (
+                "\t\t// Writable-field allowlists deliberately EMPTY (filtering"
+                " bypassed):\n\t\t// %s.\n" % bypass_reason
+            )
+        writable_block += (
+            "\t\tCreateWritableAttrs: map[string]bool{ %s },\n" % create_w_set
+        )
+        writable_block += (
+            "\t\tUpdateWritableAttrs: map[string]bool{ %s },\n" % update_w_set
+        )
         # ProjectIDAttr is the scope attribute the generic bridge keeps out of the
         # request body and restores into state from extras. For org-scoped entities
         # that attribute is organization_id (it scopes the URL, not the body).
@@ -3023,6 +3226,7 @@ def main():
             wire_key_set=wire_key_set,
             output_only_set=output_only_set,
             spread_set=spread_set,
+            writable_block=writable_block,
         )
         p = os.path.join(OUTDIR, "%s_spec.go" % name)
         open(p, "w").write(src)

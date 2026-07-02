@@ -9,13 +9,15 @@ import "github.com/mixpanel/terraform-provider-mixpanel/internal/client"
 // by the theme resource and data source.
 func ThemeAttrSpec() client.AttrSpec {
 	return client.AttrSpec{
-		IDAttr:            "theme_id",
-		ProjectIDAttr:     "project_id",
-		PathParamAttrs:    map[string]bool{},
-		JSONEncodeAttrs:   map[string]bool{"data": true},
-		JSONStringAttrs:   map[string]bool{},
-		JSONEncodeWireKey: map[string]string{"allow_staff_override": "allow_staff_override", "can_share": "can_share", "can_update_basic": "can_update_basic", "can_update_restricted": "can_update_restricted", "can_update_visibility": "can_update_visibility", "can_view": "can_view", "created_by": "created_by", "global_access_type": "global_access_type", "is_locked": "is_locked", "is_superadmin": "is_superadmin", "is_visible": "is_visible"},
-		OutputOnlyAttrs:   map[string]bool{},
-		SpreadAttrs:       map[string]bool{},
+		IDAttr:              "theme_id",
+		ProjectIDAttr:       "project_id",
+		PathParamAttrs:      map[string]bool{},
+		JSONEncodeAttrs:     map[string]bool{"data": true},
+		JSONStringAttrs:     map[string]bool{},
+		JSONEncodeWireKey:   map[string]string{"allow_staff_override": "allow_staff_override", "can_share": "can_share", "can_update_basic": "can_update_basic", "can_update_restricted": "can_update_restricted", "can_update_visibility": "can_update_visibility", "can_view": "can_view", "created_by": "created_by", "global_access_type": "global_access_type", "is_locked": "is_locked", "is_superadmin": "is_superadmin", "is_visible": "is_visible"},
+		OutputOnlyAttrs:     map[string]bool{},
+		SpreadAttrs:         map[string]bool{},
+		CreateWritableAttrs: map[string]bool{"data": true, "global_access_type": true, "name": true, "type": true},
+		UpdateWritableAttrs: map[string]bool{"data": true, "global_access_type": true, "name": true, "type": true},
 	}
 }

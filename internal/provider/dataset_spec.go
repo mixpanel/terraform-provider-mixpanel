@@ -9,13 +9,15 @@ import "github.com/mixpanel/terraform-provider-mixpanel/internal/client"
 // by the dataset resource and data source.
 func DatasetAttrSpec() client.AttrSpec {
 	return client.AttrSpec{
-		IDAttr:            "dataset_id",
-		ProjectIDAttr:     "project_id",
-		PathParamAttrs:    map[string]bool{},
-		JSONEncodeAttrs:   map[string]bool{},
-		JSONStringAttrs:   map[string]bool{},
-		JSONEncodeWireKey: map[string]string{"dataset_id": "dataset_id", "dataset_secrets": "dataset_secrets"},
-		OutputOnlyAttrs:   map[string]bool{"dataset_secrets": true},
-		SpreadAttrs:       map[string]bool{},
+		IDAttr:              "dataset_id",
+		ProjectIDAttr:       "project_id",
+		PathParamAttrs:      map[string]bool{},
+		JSONEncodeAttrs:     map[string]bool{},
+		JSONStringAttrs:     map[string]bool{},
+		JSONEncodeWireKey:   map[string]string{"dataset_id": "dataset_id", "dataset_secrets": "dataset_secrets"},
+		OutputOnlyAttrs:     map[string]bool{"dataset_secrets": true},
+		SpreadAttrs:         map[string]bool{},
+		CreateWritableAttrs: map[string]bool{"description": true, "name": true},
+		UpdateWritableAttrs: map[string]bool{"description": true, "name": true},
 	}
 }

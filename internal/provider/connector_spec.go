@@ -9,13 +9,15 @@ import "github.com/mixpanel/terraform-provider-mixpanel/internal/client"
 // by the connector resource and data source.
 func ConnectorAttrSpec() client.AttrSpec {
 	return client.AttrSpec{
-		IDAttr:            "connector_id",
-		ProjectIDAttr:     "project_id",
-		PathParamAttrs:    map[string]bool{},
-		JSONEncodeAttrs:   map[string]bool{"category_properties": true, "connector_properties": true},
-		JSONStringAttrs:   map[string]bool{},
-		JSONEncodeWireKey: map[string]string{"category_properties": "category_properties", "connector_id": "connector_id", "connector_properties": "connector_properties", "connector_type": "connector_type", "created_at": "created_at", "created_by": "created_by", "failure_message": "failure_message"},
-		OutputOnlyAttrs:   map[string]bool{"created_at": true, "created_by": true, "failure_message": true, "status": true},
-		SpreadAttrs:       map[string]bool{},
+		IDAttr:              "connector_id",
+		ProjectIDAttr:       "project_id",
+		PathParamAttrs:      map[string]bool{},
+		JSONEncodeAttrs:     map[string]bool{"category_properties": true, "connector_properties": true},
+		JSONStringAttrs:     map[string]bool{},
+		JSONEncodeWireKey:   map[string]string{"category_properties": "category_properties", "connector_id": "connector_id", "connector_properties": "connector_properties", "connector_type": "connector_type", "created_at": "created_at", "created_by": "created_by", "failure_message": "failure_message"},
+		OutputOnlyAttrs:     map[string]bool{"created_at": true, "created_by": true, "failure_message": true, "status": true},
+		SpreadAttrs:         map[string]bool{},
+		CreateWritableAttrs: map[string]bool{"category_properties": true, "connector_properties": true, "connector_type": true, "label": true},
+		UpdateWritableAttrs: map[string]bool{},
 	}
 }

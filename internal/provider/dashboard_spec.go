@@ -13,13 +13,15 @@ import "github.com/mixpanel/terraform-provider-mixpanel/internal/client"
 // by the dashboard resource and data source.
 func DashboardAttrSpec() client.AttrSpec {
 	return client.AttrSpec{
-		IDAttr:            "id",
-		ProjectIDAttr:     "project_id",
-		PathParamAttrs:    map[string]bool{"share_with_project": true, "dashboard_id": true},
-		JSONEncodeAttrs:   map[string]bool{},
-		JSONStringAttrs:   map[string]bool{},
-		JSONEncodeWireKey: map[string]string{"card_order": "card_order", "creator_email": "creator_email", "creator_id": "creator_id", "creator_name": "creator_name", "generation_type": "generation_type", "global_access_type": "global_access_type", "is_draft": "is_draft", "is_favorited": "is_favorited", "is_private": "is_private", "is_restricted": "is_restricted", "layout_version": "layout_version", "pinned_date": "pinned_date", "target_parent_dashboard_id": "target_parent_dashboard_id", "target_project_id": "target_project_id", "template_type": "template_type", "time_filter": "time_filter", "total_view_count": "total_view_count", "unique_view_count": "unique_view_count"},
-		OutputOnlyAttrs:   map[string]bool{"created": true, "creator": true, "creator_email": true, "creator_id": true, "creator_name": true, "is_favorited": true, "layout_version": true, "modified": true, "pinned_date": true, "template_type": true, "total_view_count": true, "unique_view_count": true},
-		SpreadAttrs:       map[string]bool{},
+		IDAttr:              "id",
+		ProjectIDAttr:       "project_id",
+		PathParamAttrs:      map[string]bool{"share_with_project": true, "dashboard_id": true},
+		JSONEncodeAttrs:     map[string]bool{},
+		JSONStringAttrs:     map[string]bool{},
+		JSONEncodeWireKey:   map[string]string{"card_order": "card_order", "creator_email": "creator_email", "creator_id": "creator_id", "creator_name": "creator_name", "generation_type": "generation_type", "global_access_type": "global_access_type", "is_draft": "is_draft", "is_favorited": "is_favorited", "is_private": "is_private", "is_restricted": "is_restricted", "layout_version": "layout_version", "pinned_date": "pinned_date", "target_parent_dashboard_id": "target_parent_dashboard_id", "target_project_id": "target_project_id", "template_type": "template_type", "time_filter": "time_filter", "total_view_count": "total_view_count", "unique_view_count": "unique_view_count"},
+		OutputOnlyAttrs:     map[string]bool{"created": true, "creator": true, "creator_email": true, "creator_id": true, "creator_name": true, "is_favorited": true, "layout_version": true, "modified": true, "pinned_date": true, "template_type": true, "total_view_count": true, "unique_view_count": true},
+		SpreadAttrs:         map[string]bool{},
+		CreateWritableAttrs: map[string]bool{"card_order": true, "cards": true, "description": true, "duplicate": true, "filters": true, "generation_type": true, "global_access_type": true, "is_draft": true, "is_private": true, "is_restricted": true, "rows": true, "target_parent_dashboard_id": true, "target_project_id": true, "time_filter": true, "title": true},
+		UpdateWritableAttrs: map[string]bool{"card_order": true, "description": true, "filters": true, "global_access_type": true, "is_private": true, "is_restricted": true, "time_filter": true, "title": true},
 	}
 }

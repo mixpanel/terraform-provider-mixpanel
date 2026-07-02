@@ -94,7 +94,7 @@ func (r *OrgRequestAccessSettingsResource) Create(ctx context.Context, req resou
 		resp.Diagnostics.AddError("Resolving scope id", err.Error())
 		return
 	}
-	full, err := client.WireFromRaw(req.Plan.Raw, spec)
+	full, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding org_request_access_settings request", err.Error())
 		return
@@ -156,7 +156,7 @@ func (r *OrgRequestAccessSettingsResource) Update(ctx context.Context, req resou
 		resp.Diagnostics.AddError("Resolving scope id", err.Error())
 		return
 	}
-	full, err := client.WireFromRaw(req.Plan.Raw, spec)
+	full, err := client.WireFromRawForUpdate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding org_request_access_settings request", err.Error())
 		return

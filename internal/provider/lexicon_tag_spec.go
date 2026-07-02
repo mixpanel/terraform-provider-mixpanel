@@ -9,13 +9,15 @@ import "github.com/mixpanel/terraform-provider-mixpanel/internal/client"
 // by the lexicon_tag resource and data source.
 func LexiconTagAttrSpec() client.AttrSpec {
 	return client.AttrSpec{
-		IDAttr:            "id",
-		ProjectIDAttr:     "project_id",
-		PathParamAttrs:    map[string]bool{"tag_id": true},
-		JSONEncodeAttrs:   map[string]bool{},
-		JSONStringAttrs:   map[string]bool{},
-		JSONEncodeWireKey: map[string]string{},
-		OutputOnlyAttrs:   map[string]bool{},
-		SpreadAttrs:       map[string]bool{},
+		IDAttr:              "id",
+		ProjectIDAttr:       "project_id",
+		PathParamAttrs:      map[string]bool{"tag_id": true},
+		JSONEncodeAttrs:     map[string]bool{},
+		JSONStringAttrs:     map[string]bool{},
+		JSONEncodeWireKey:   map[string]string{},
+		OutputOnlyAttrs:     map[string]bool{},
+		SpreadAttrs:         map[string]bool{},
+		CreateWritableAttrs: map[string]bool{"color": true, "description": true, "name": true},
+		UpdateWritableAttrs: map[string]bool{"color": true, "description": true, "name": true},
 	}
 }

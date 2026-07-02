@@ -3,6 +3,10 @@
 // HAND-EDITED EXCEPTION: share_with_project assertions (entities are shared
 // with the project by default; an explicit false removes the share). See
 // sharing.go. Re-apply if regenerating.
+//
+// HAND-EDITED EXCEPTION: resource_type / data_group_id are create-only on the
+// server and marked RequiresReplace in Schema; steps below assert a changed
+// value plans a REPLACE, not an in-place update. Re-apply if regenerating.
 
 package provider
 
@@ -10,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 )
 
 func TestAccCustomProperty_lifecycle(t *testing.T) {
@@ -34,6 +39,33 @@ resource "mixpanel_custom_property" "test" {
   share_with_project = false
 }`),
 				Check: resource.TestCheckResourceAttr("mixpanel_custom_property.test", "share_with_project", "false"),
+			},
+			{
+				// Set the create-only fields so the next step can change them.
+				Config: providerConfig(srv.URL, `
+resource "mixpanel_custom_property" "test" {
+  share_with_project = false
+  resource_type      = "events"
+  data_group_id      = 1
+}`),
+				Check: resource.TestCheckResourceAttr("mixpanel_custom_property.test", "resource_type", "events"),
+			},
+			{
+				// resource_type and data_group_id are create-only (server-immutable):
+				// changing either must plan a REPLACE (RequiresReplace), never an
+				// in-place update (the PUT validator rejects a changed value).
+				Config: providerConfig(srv.URL, `
+resource "mixpanel_custom_property" "test" {
+  share_with_project = false
+  resource_type      = "people"
+  data_group_id      = 2
+}`),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction("mixpanel_custom_property.test", plancheck.ResourceActionReplace),
+					},
+				},
+				Check: resource.TestCheckResourceAttr("mixpanel_custom_property.test", "resource_type", "people"),
 			},
 			{
 				// Import the resource and assert state round-trips through Read.

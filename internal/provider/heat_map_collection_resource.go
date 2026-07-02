@@ -154,7 +154,7 @@ func (r *HeatMapCollectionResource) Update(ctx context.Context, req resource.Upd
 		resp.Diagnostics.AddError("Reading heat_map_collection id", err.Error())
 		return
 	}
-	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForUpdate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding heat_map_collection request", err.Error())
 		return

@@ -17,5 +17,9 @@ func TagAttrSpec() client.AttrSpec {
 		JSONEncodeWireKey: map[string]string{},
 		OutputOnlyAttrs:   map[string]bool{"name": true},
 		SpreadAttrs:       map[string]bool{},
+		// Writable-field allowlists deliberately EMPTY (filtering bypassed):
+		// data source only (no resource writes); nothing to filter.
+		CreateWritableAttrs: map[string]bool{},
+		UpdateWritableAttrs: map[string]bool{},
 	}
 }

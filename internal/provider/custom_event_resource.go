@@ -162,7 +162,7 @@ func (r *CustomEventResource) Update(ctx context.Context, req resource.UpdateReq
 		resp.Diagnostics.AddError("Reading custom_event id", err.Error())
 		return
 	}
-	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForUpdate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding custom_event request", err.Error())
 		return

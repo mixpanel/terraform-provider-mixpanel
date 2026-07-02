@@ -78,14 +78,14 @@
       "create_req_schema": "AnnotationCreateRequest",
       "collection": "/api/app/projects/{project_id}/annotations",
       "instance": "/api/app/projects/{project_id}/annotations/{annotation_id}",
-      "update": "put",
+      "update": "patch",
       "delete": "delete",
       "jsonencode_fields": [
         "user"
       ],
       "collapse_fields": [],
       "drop_reason": "",
-      "notes": "Real CRUD entity. read_schema AnnotationResponse is a typed entity body with integer 'id' (path param annotation_id -> id_attr id). create POST requestBody resolves allOf->AnnotationCreateRequest. Full CRUD on instance path (get/put/patch/delete). jsonencode_fields=['user'] confirmed: user is anyOf[AnnotationUser object, null] (nullable object ref). No collapse_fields: no anyOf of >=2 plain scalars. 'tags' is a typed array of AnnotationTagRef objects, representable as a TF nested list, left as-is."
+      "notes": "Real CRUD entity. read_schema AnnotationResponse is a typed entity body with integer 'id' (path param annotation_id -> id_attr id). create POST requestBody resolves allOf->AnnotationCreateRequest. Full CRUD on instance path (get/put/patch/delete). jsonencode_fields=['user'] confirmed: user is anyOf[AnnotationUser object, null] (nullable object ref). No collapse_fields: no anyOf of >=2 plain scalars. 'tags' is a typed array of AnnotationTagRef objects, representable as a TF nested list, left as-is. [2026-07-02: update verb corrected put->patch; live PUT returns 405 \"use PATCH instead\" (annotations/views.py, dashboard_reports/views.py).]"
     },
     {
       "short": "bookmarks",
@@ -200,7 +200,7 @@
       "id_attr": "id",
       "read_schema": "EmailDigestResponse",
       "create_req_schema": "EmailDigestCreateRequest",
-      "update": "put",
+      "update": "patch",
       "delete": "delete",
       "collection": "/api/app/projects/{project_id}/dashboard-reports/email-digests",
       "instance": "/api/app/projects/{project_id}/dashboard-reports/email-digests/{email_digest_id}",
@@ -209,7 +209,7 @@
       ],
       "collapse_fields": [],
       "drop_reason": "",
-      "notes": "Real CRUD entity. read_schema EmailDigestResponse has required typed integer `id`; path param email_digest_id maps to entity attribute id. Full lifecycle: POST create (EmailDigestCreateRequest), PUT update, DELETE, GET. slack_subscriptions = anyOf[array of dynamic additionalProperties:true objects, null] -> jsonencode. No anyOf-of-multiple-scalars, so collapse_fields empty. Singularized email_digests -> email_digest."
+      "notes": "Real CRUD entity. read_schema EmailDigestResponse has required typed integer `id`; path param email_digest_id maps to entity attribute id. Full lifecycle: POST create (EmailDigestCreateRequest), PUT update, DELETE, GET. slack_subscriptions = anyOf[array of dynamic additionalProperties:true objects, null] -> jsonencode. No anyOf-of-multiple-scalars, so collapse_fields empty. Singularized email_digests -> email_digest. [2026-07-02: update verb corrected put->patch; live PUT returns 405 \"use PATCH instead\" (annotations/views.py, dashboard_reports/views.py).]"
     },
     {
       "short": "dashboards",

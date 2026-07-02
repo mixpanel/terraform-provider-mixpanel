@@ -13,13 +13,15 @@ import "github.com/mixpanel/terraform-provider-mixpanel/internal/client"
 // by the custom_event resource and data source.
 func CustomEventAttrSpec() client.AttrSpec {
 	return client.AttrSpec{
-		IDAttr:            "customevent_id",
-		ProjectIDAttr:     "project_id",
-		PathParamAttrs:    map[string]bool{"share_with_project": true},
-		JSONEncodeAttrs:   map[string]bool{},
-		JSONStringAttrs:   map[string]bool{},
-		JSONEncodeWireKey: map[string]string{"custom_event": "custom_event"},
-		OutputOnlyAttrs:   map[string]bool{"custom_event": true},
-		SpreadAttrs:       map[string]bool{},
+		IDAttr:              "customevent_id",
+		ProjectIDAttr:       "project_id",
+		PathParamAttrs:      map[string]bool{"share_with_project": true},
+		JSONEncodeAttrs:     map[string]bool{},
+		JSONStringAttrs:     map[string]bool{},
+		JSONEncodeWireKey:   map[string]string{"custom_event": "custom_event"},
+		OutputOnlyAttrs:     map[string]bool{"custom_event": true},
+		SpreadAttrs:         map[string]bool{},
+		CreateWritableAttrs: map[string]bool{"alternatives": true, "name": true},
+		UpdateWritableAttrs: map[string]bool{"alternatives": true, "name": true},
 	}
 }

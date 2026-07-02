@@ -94,7 +94,7 @@ func (r *TwofactorSettingsResource) Create(ctx context.Context, req resource.Cre
 		resp.Diagnostics.AddError("Resolving scope id", err.Error())
 		return
 	}
-	full, err := client.WireFromRaw(req.Plan.Raw, spec)
+	full, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding twofactor_settings request", err.Error())
 		return
@@ -156,7 +156,7 @@ func (r *TwofactorSettingsResource) Update(ctx context.Context, req resource.Upd
 		resp.Diagnostics.AddError("Resolving scope id", err.Error())
 		return
 	}
-	full, err := client.WireFromRaw(req.Plan.Raw, spec)
+	full, err := client.WireFromRawForUpdate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding twofactor_settings request", err.Error())
 		return

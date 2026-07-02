@@ -197,7 +197,7 @@ func (r *LexiconTagResource) Update(ctx context.Context, req resource.UpdateRequ
 		resp.Diagnostics.AddError("Reading lexicon_tag id", err.Error())
 		return
 	}
-	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForUpdate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding lexicon_tag request", err.Error())
 		return

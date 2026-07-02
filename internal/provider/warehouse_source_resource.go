@@ -170,7 +170,7 @@ func (r *WarehouseSourceResource) Update(ctx context.Context, req resource.Updat
 		resp.Diagnostics.AddError("Reading warehouse_source id", err.Error())
 		return
 	}
-	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForUpdate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding warehouse_source request", err.Error())
 		return

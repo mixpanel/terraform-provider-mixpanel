@@ -79,17 +79,25 @@ type AttrSpec struct {
 	SpreadAttrs map[string]bool
 
 	// CreateWritableAttrs is the allowlist of writable fields for CREATE requests,
-	// extracted from the entity's Pydantic create request schema. When non-empty,
-	// WireFromRaw filters the body to include only these attributes (plus synthetic
-	// attrs like jsonencode fields). Fixes the full-body PATCH bug where read-only
-	// fields from a GET response are sent in a create and rejected as 400.
+	// extracted from the entity's server-side create request schema (the webapp's
+	// voluptuous/Pydantic validators, frozen into the OpenAPI spec the generator
+	// consumes). Keys are Terraform attribute names (snake_case). When non-empty,
+	// WireFromRawForCreate filters the body to include ONLY these attributes.
+	// jsonencode container attributes (e.g. "groups", "definition") MUST be listed
+	// here when writable — they are filtered like any other attribute. Fixes the
+	// full-body write bug where read-only fields from a GET response are sent in a
+	// create and rejected as 400 by extra="forbid" validators.
+	//
+	// Entities whose request body is polymorphic/opaque (SpreadAttrs set, settings
+	// passthroughs, proxied services) must leave both allowlists EMPTY, which
+	// bypasses filtering entirely.
 	CreateWritableAttrs map[string]bool
 
 	// UpdateWritableAttrs is the allowlist of writable fields for UPDATE requests,
-	// extracted from the entity's Pydantic update request schema. When non-empty,
-	// WireFromRaw filters the body to include only these attributes (plus synthetic
-	// attrs like jsonencode fields). Fixes the full-body PATCH bug where read-only
-	// fields from a GET response are sent in an update and rejected as 400.
+	// extracted from the entity's server-side update request schema. Same
+	// semantics as CreateWritableAttrs, applied by WireFromRawForUpdate. Fixes the
+	// full-body PATCH bug where read-only fields from a GET response are sent in
+	// an update and rejected as 400.
 	UpdateWritableAttrs map[string]bool
 }
 
@@ -223,9 +231,11 @@ func WireFromRawForCreate(raw tftypes.Value, spec AttrSpec) (map[string]any, err
 	if err != nil {
 		return nil, err
 	}
-	if len(spec.CreateWritableAttrs) == 0 {
-		// No allowlist: accept all fields (backward compatibility, or entity has
-		// no create schema in the spec). This preserves existing behavior.
+	if len(spec.CreateWritableAttrs) == 0 || len(spec.SpreadAttrs) > 0 {
+		// No allowlist: accept all fields (entity has no resolvable create schema,
+		// or its body is deliberately unfiltered). Spread entities are ALWAYS
+		// bypassed: their body root carries variant-specific keys flattened out of
+		// a jsonencode attr that a TF-attr-keyed allowlist cannot describe.
 		return body, nil
 	}
 	return filterWritableFields(body, spec, spec.CreateWritableAttrs), nil
@@ -240,20 +250,25 @@ func WireFromRawForUpdate(raw tftypes.Value, spec AttrSpec) (map[string]any, err
 	if err != nil {
 		return nil, err
 	}
-	if len(spec.UpdateWritableAttrs) == 0 {
-		// No allowlist: accept all fields (backward compatibility, or entity has
-		// no update schema in the spec). This preserves existing behavior.
+	if len(spec.UpdateWritableAttrs) == 0 || len(spec.SpreadAttrs) > 0 {
+		// No allowlist: accept all fields (entity has no resolvable update schema,
+		// or its body is deliberately unfiltered). Spread entities are ALWAYS
+		// bypassed: their body root carries variant-specific keys flattened out of
+		// a jsonencode attr that a TF-attr-keyed allowlist cannot describe.
 		return body, nil
 	}
 	return filterWritableFields(body, spec, spec.UpdateWritableAttrs), nil
 }
 
 // filterWritableFields filters a wire body to include only fields from the
-// writable allowlist (Pydantic request schema properties). The allowlist is
-// checked against Terraform attribute names (snake_case), and the wire key is
-// derived via wireKey() to handle camelCase API fields. Jsonencode/spread attrs
-// are always included (they model polymorphic oneOf bodies that the generator
-// collapsed, and the request schema cannot express their inner structure).
+// writable allowlist (the server's request schema properties). The allowlist is
+// checked against Terraform attribute names (snake_case); each body key is
+// reverse-mapped through wireKey() so camelCase API fields resolve back to
+// their TF attr. Jsonencode/jsonstring container attributes are filtered like
+// any other attribute — a writable container (e.g. cohort "groups", metric
+// "definition") must be in the allowlist, and a computed jsonencode echo (e.g.
+// bookmark "metadata", annotation "user") is dropped when it is not. Spread
+// entities never reach this function (WireFromRawFor* bypasses them).
 func filterWritableFields(body map[string]any, spec AttrSpec, allowlist map[string]bool) map[string]any {
 	out := make(map[string]any, len(body))
 	for wireKey, val := range body {
@@ -272,14 +287,6 @@ func filterWritableFields(body map[string]any, spec AttrSpec, allowlist map[stri
 			// No explicit alias: the TF attr name equals the wire key (verbatim).
 			tfAttr = wireKey
 		}
-		// Jsonencode/spread attrs are always included: the request schema only lists
-		// the collapsed container (e.g. "definition"), not the inner polymorphic
-		// fields, so the allowlist cannot express what's writable inside them.
-		if spec.JSONEncodeAttrs[tfAttr] || spec.JSONStringAttrs[tfAttr] {
-			out[wireKey] = val
-			continue
-		}
-		// Regular typed attr: include only if in the allowlist.
 		if allowlist[tfAttr] {
 			out[wireKey] = val
 		}

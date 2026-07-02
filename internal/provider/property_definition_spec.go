@@ -22,5 +22,9 @@ func PropertyDefinitionAttrSpec() client.AttrSpec {
 		JSONEncodeWireKey: map[string]string{},
 		OutputOnlyAttrs:   map[string]bool{},
 		SpreadAttrs:       map[string]bool{},
+		// Writable-field allowlists deliberately EMPTY (filtering bypassed):
+		// CRUD is hand-written (typed model, not the generic bridge); nothing to filter.
+		CreateWritableAttrs: map[string]bool{},
+		UpdateWritableAttrs: map[string]bool{},
 	}
 }

@@ -9,13 +9,15 @@ import "github.com/mixpanel/terraform-provider-mixpanel/internal/client"
 // by the event_drop_filter resource and data source.
 func EventDropFilterAttrSpec() client.AttrSpec {
 	return client.AttrSpec{
-		IDAttr:            "id",
-		ProjectIDAttr:     "project_id",
-		PathParamAttrs:    map[string]bool{},
-		JSONEncodeAttrs:   map[string]bool{"filters": true},
-		JSONStringAttrs:   map[string]bool{},
-		JSONEncodeWireKey: map[string]string{"display_name": "display_name", "event_name": "event_name"},
-		OutputOnlyAttrs:   map[string]bool{"created": true, "deleted": true, "display_name": true, "legacy": true},
-		SpreadAttrs:       map[string]bool{},
+		IDAttr:              "id",
+		ProjectIDAttr:       "project_id",
+		PathParamAttrs:      map[string]bool{},
+		JSONEncodeAttrs:     map[string]bool{"filters": true},
+		JSONStringAttrs:     map[string]bool{},
+		JSONEncodeWireKey:   map[string]string{"display_name": "display_name", "event_name": "event_name"},
+		OutputOnlyAttrs:     map[string]bool{"created": true, "deleted": true, "display_name": true, "legacy": true},
+		SpreadAttrs:         map[string]bool{},
+		CreateWritableAttrs: map[string]bool{"active": true, "event_name": true, "filters": true},
+		UpdateWritableAttrs: map[string]bool{"active": true, "event_name": true, "filters": true},
 	}
 }

@@ -9,13 +9,15 @@ import "github.com/mixpanel/terraform-provider-mixpanel/internal/client"
 // by the webhook resource and data source.
 func WebhookAttrSpec() client.AttrSpec {
 	return client.AttrSpec{
-		IDAttr:            "id",
-		ProjectIDAttr:     "project_id",
-		PathParamAttrs:    map[string]bool{"webhook_id": true},
-		JSONEncodeAttrs:   map[string]bool{},
-		JSONStringAttrs:   map[string]bool{},
-		JSONEncodeWireKey: map[string]string{"auth_type": "auth_type", "creator_id": "creator_id", "creator_name": "creator_name", "is_enabled": "is_enabled"},
-		OutputOnlyAttrs:   map[string]bool{"created": true, "creator_id": true, "creator_name": true, "is_enabled": true, "modified": true},
-		SpreadAttrs:       map[string]bool{},
+		IDAttr:              "id",
+		ProjectIDAttr:       "project_id",
+		PathParamAttrs:      map[string]bool{"webhook_id": true},
+		JSONEncodeAttrs:     map[string]bool{},
+		JSONStringAttrs:     map[string]bool{},
+		JSONEncodeWireKey:   map[string]string{"auth_type": "auth_type", "creator_id": "creator_id", "creator_name": "creator_name", "is_enabled": "is_enabled"},
+		OutputOnlyAttrs:     map[string]bool{"created": true, "creator_id": true, "creator_name": true, "is_enabled": true, "modified": true},
+		SpreadAttrs:         map[string]bool{},
+		CreateWritableAttrs: map[string]bool{"auth_type": true, "name": true, "password": true, "url": true, "username": true},
+		UpdateWritableAttrs: map[string]bool{"auth_type": true, "is_enabled": true, "name": true, "password": true, "url": true, "username": true},
 	}
 }

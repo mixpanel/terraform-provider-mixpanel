@@ -189,7 +189,7 @@ func (r *EventDefinitionResource) Update(ctx context.Context, req resource.Updat
 		resp.Diagnostics.AddError("Reading event_definition id", err.Error())
 		return
 	}
-	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForUpdate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding event_definition request", err.Error())
 		return

@@ -9,13 +9,15 @@ import "github.com/mixpanel/terraform-provider-mixpanel/internal/client"
 // by the project_outgoing_integration resource and data source.
 func ProjectOutgoingIntegrationAttrSpec() client.AttrSpec {
 	return client.AttrSpec{
-		IDAttr:            "id",
-		ProjectIDAttr:     "project_id",
-		PathParamAttrs:    map[string]bool{"project_outgoing_integration_id": true},
-		JSONEncodeAttrs:   map[string]bool{"settings": true},
-		JSONStringAttrs:   map[string]bool{},
-		JSONEncodeWireKey: map[string]string{"connector_name": "connector_name", "integration_id": "integration_id"},
-		OutputOnlyAttrs:   map[string]bool{"cohorts": true, "connector_name": true, "created_at": true, "created_by": true, "failure_message": true, "integration_id": true, "is_enabled": true, "modified_at": true, "name": true, "status": true, "workflow_state": true},
-		SpreadAttrs:       map[string]bool{},
+		IDAttr:              "id",
+		ProjectIDAttr:       "project_id",
+		PathParamAttrs:      map[string]bool{"project_outgoing_integration_id": true},
+		JSONEncodeAttrs:     map[string]bool{"settings": true},
+		JSONStringAttrs:     map[string]bool{},
+		JSONEncodeWireKey:   map[string]string{"connector_name": "connector_name", "integration_id": "integration_id"},
+		OutputOnlyAttrs:     map[string]bool{"cohorts": true, "connector_name": true, "created_at": true, "created_by": true, "failure_message": true, "integration_id": true, "is_enabled": true, "modified_at": true, "name": true, "status": true, "workflow_state": true},
+		SpreadAttrs:         map[string]bool{},
+		CreateWritableAttrs: map[string]bool{"settings": true},
+		UpdateWritableAttrs: map[string]bool{"settings": true},
 	}
 }

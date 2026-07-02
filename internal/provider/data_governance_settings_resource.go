@@ -148,7 +148,7 @@ func (r *DataGovernanceSettingsResource) Update(ctx context.Context, req resourc
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}
-	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForUpdate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding data_governance_settings request", err.Error())
 		return

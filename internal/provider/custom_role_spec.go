@@ -9,13 +9,15 @@ import "github.com/mixpanel/terraform-provider-mixpanel/internal/client"
 // by the custom_role resource and data source.
 func CustomRoleAttrSpec() client.AttrSpec {
 	return client.AttrSpec{
-		IDAttr:            "role_id",
-		ProjectIDAttr:     "project_id",
-		PathParamAttrs:    map[string]bool{},
-		JSONEncodeAttrs:   map[string]bool{},
-		JSONStringAttrs:   map[string]bool{},
-		JSONEncodeWireKey: map[string]string{"copied_from_role_id": "copied_from_role_id", "created_by_user_id": "created_by_user_id", "is_default": "is_default", "project_id": "project_id", "role_id": "role_id"},
-		OutputOnlyAttrs:   map[string]bool{"created": true, "created_by_user_id": true, "is_default": true, "modified": true},
-		SpreadAttrs:       map[string]bool{},
+		IDAttr:              "role_id",
+		ProjectIDAttr:       "project_id",
+		PathParamAttrs:      map[string]bool{},
+		JSONEncodeAttrs:     map[string]bool{},
+		JSONStringAttrs:     map[string]bool{},
+		JSONEncodeWireKey:   map[string]string{"copied_from_role_id": "copied_from_role_id", "created_by_user_id": "created_by_user_id", "is_default": "is_default", "project_id": "project_id", "role_id": "role_id"},
+		OutputOnlyAttrs:     map[string]bool{"created": true, "created_by_user_id": true, "is_default": true, "modified": true},
+		SpreadAttrs:         map[string]bool{},
+		CreateWritableAttrs: map[string]bool{"copied_from_role_id": true, "description": true, "name": true, "permissions": true},
+		UpdateWritableAttrs: map[string]bool{"description": true, "name": true, "permissions": true},
 	}
 }

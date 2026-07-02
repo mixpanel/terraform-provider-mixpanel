@@ -5,6 +5,12 @@
 // project share via the shared-entities API and Read refreshes it. Entities a
 // service account creates are otherwise invisible to human users. Re-apply
 // these edits if regenerating this file.
+//
+// HAND-EDITED EXCEPTION: resource_type and data_group_id are create-only on the
+// server (custom_properties/views.py IMMUTABLE_FIELDS = {"resourceType",
+// "dataGroupId"}: the PUT validator 400s when a differing truthy value is
+// sent), so both are marked RequiresReplace in Schema. Re-apply if
+// regenerating.
 
 package provider
 
@@ -54,6 +60,10 @@ func (r *CustomPropertyResource) Schema(ctx context.Context, req resource.Schema
 	s.Attributes["composed_properties"] = schema.StringAttribute{Optional: true, Computed: true}
 	s.Attributes["display_options"] = schema.StringAttribute{Optional: true, Computed: true}
 	s.Attributes[shareAttrName] = shareWithProjectAttribute()
+	// resource_type / data_group_id are create-only on the server (immutable
+	// fields: the PUT validator rejects a changed value), so a changed value must
+	// plan a replacement rather than an in-place update.
+	requireReplace(s.Attributes, "resource_type", "data_group_id")
 	stabilizeComputed(s.Attributes)
 	resp.Schema = s
 }
@@ -165,7 +175,7 @@ func (r *CustomPropertyResource) Update(ctx context.Context, req resource.Update
 		resp.Diagnostics.AddError("Reading custom_property id", err.Error())
 		return
 	}
-	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForUpdate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding custom_property request", err.Error())
 		return

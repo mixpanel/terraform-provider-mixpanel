@@ -9,13 +9,15 @@ import "github.com/mixpanel/terraform-provider-mixpanel/internal/client"
 // by the event_definition resource and data source.
 func EventDefinitionAttrSpec() client.AttrSpec {
 	return client.AttrSpec{
-		IDAttr:            "id",
-		ProjectIDAttr:     "project_id",
-		PathParamAttrs:    map[string]bool{"event_definition_id": true},
-		JSONEncodeAttrs:   map[string]bool{},
-		JSONStringAttrs:   map[string]bool{},
-		JSONEncodeWireKey: map[string]string{"created_utc": "createdUTC", "modified_utc": "modifiedUTC", "team_contacts": "team_contacts"},
-		OutputOnlyAttrs:   map[string]bool{"collect_everything_event_id": true, "contacts": true, "created_utc": true, "custom_event_id": true, "dropped": true, "last_modified": true, "merged": true, "merged_event_id": true, "modified_utc": true, "name": true, "platforms": true, "status": true, "team_contacts": true},
-		SpreadAttrs:       map[string]bool{},
+		IDAttr:              "id",
+		ProjectIDAttr:       "project_id",
+		PathParamAttrs:      map[string]bool{"event_definition_id": true},
+		JSONEncodeAttrs:     map[string]bool{},
+		JSONStringAttrs:     map[string]bool{},
+		JSONEncodeWireKey:   map[string]string{"created_utc": "createdUTC", "modified_utc": "modifiedUTC", "team_contacts": "team_contacts"},
+		OutputOnlyAttrs:     map[string]bool{"collect_everything_event_id": true, "contacts": true, "created_utc": true, "custom_event_id": true, "dropped": true, "last_modified": true, "merged": true, "merged_event_id": true, "modified_utc": true, "name": true, "platforms": true, "status": true, "team_contacts": true},
+		SpreadAttrs:         map[string]bool{},
+		CreateWritableAttrs: map[string]bool{"definitions": true},
+		UpdateWritableAttrs: map[string]bool{"description": true, "verified": true},
 	}
 }

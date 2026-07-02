@@ -446,7 +446,7 @@ func (r *ExperimentResource) Update(ctx context.Context, req resource.UpdateRequ
 		}
 		curArchived = false
 	}
-	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForUpdate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding experiment request", err.Error())
 		return

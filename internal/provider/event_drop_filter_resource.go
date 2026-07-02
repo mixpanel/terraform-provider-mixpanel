@@ -207,7 +207,7 @@ func (r *EventDropFilterResource) Update(ctx context.Context, req resource.Updat
 		resp.Diagnostics.AddError("Reading event_drop_filter id", err.Error())
 		return
 	}
-	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForUpdate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding event_drop_filter request", err.Error())
 		return

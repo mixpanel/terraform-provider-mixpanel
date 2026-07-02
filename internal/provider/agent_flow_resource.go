@@ -154,7 +154,7 @@ func (r *AgentFlowResource) Update(ctx context.Context, req resource.UpdateReque
 		resp.Diagnostics.AddError("Reading agent_flow id", err.Error())
 		return
 	}
-	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForUpdate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding agent_flow request", err.Error())
 		return

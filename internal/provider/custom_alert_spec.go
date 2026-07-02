@@ -9,13 +9,15 @@ import "github.com/mixpanel/terraform-provider-mixpanel/internal/client"
 // by the custom_alert resource and data source.
 func CustomAlertAttrSpec() client.AttrSpec {
 	return client.AttrSpec{
-		IDAttr:            "id",
-		ProjectIDAttr:     "project_id",
-		PathParamAttrs:    map[string]bool{"custom_alert_id": true},
-		JSONEncodeAttrs:   map[string]bool{"condition": true, "subscriptions": true},
-		JSONStringAttrs:   map[string]bool{},
-		JSONEncodeWireKey: map[string]string{"bookmark_id": "bookmark_id", "notification_windows": "notification_windows"},
-		OutputOnlyAttrs:   map[string]bool{},
-		SpreadAttrs:       map[string]bool{},
+		IDAttr:              "id",
+		ProjectIDAttr:       "project_id",
+		PathParamAttrs:      map[string]bool{"custom_alert_id": true},
+		JSONEncodeAttrs:     map[string]bool{"condition": true, "subscriptions": true},
+		JSONStringAttrs:     map[string]bool{},
+		JSONEncodeWireKey:   map[string]string{"bookmark_id": "bookmark_id", "notification_windows": "notification_windows"},
+		OutputOnlyAttrs:     map[string]bool{},
+		SpreadAttrs:         map[string]bool{},
+		CreateWritableAttrs: map[string]bool{"bookmark_id": true, "condition": true, "frequency": true, "name": true, "notification_windows": true, "paused": true, "subscriptions": true},
+		UpdateWritableAttrs: map[string]bool{"bookmark_id": true, "condition": true, "frequency": true, "name": true, "notification_windows": true, "paused": true, "subscriptions": true},
 	}
 }

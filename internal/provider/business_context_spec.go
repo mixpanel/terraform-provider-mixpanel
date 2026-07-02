@@ -9,13 +9,15 @@ import "github.com/mixpanel/terraform-provider-mixpanel/internal/client"
 // by the business_context resource and data source.
 func BusinessContextAttrSpec() client.AttrSpec {
 	return client.AttrSpec{
-		IDAttr:            "project_id",
-		ProjectIDAttr:     "project_id",
-		PathParamAttrs:    map[string]bool{},
-		JSONEncodeAttrs:   map[string]bool{},
-		JSONStringAttrs:   map[string]bool{},
-		JSONEncodeWireKey: map[string]string{},
-		OutputOnlyAttrs:   map[string]bool{},
-		SpreadAttrs:       map[string]bool{},
+		IDAttr:              "project_id",
+		ProjectIDAttr:       "project_id",
+		PathParamAttrs:      map[string]bool{},
+		JSONEncodeAttrs:     map[string]bool{},
+		JSONStringAttrs:     map[string]bool{},
+		JSONEncodeWireKey:   map[string]string{},
+		OutputOnlyAttrs:     map[string]bool{},
+		SpreadAttrs:         map[string]bool{},
+		CreateWritableAttrs: map[string]bool{"content": true},
+		UpdateWritableAttrs: map[string]bool{"content": true},
 	}
 }

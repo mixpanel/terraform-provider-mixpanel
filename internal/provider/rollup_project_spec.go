@@ -9,13 +9,15 @@ import "github.com/mixpanel/terraform-provider-mixpanel/internal/client"
 // by the rollup_project resource and data source.
 func RollupProjectAttrSpec() client.AttrSpec {
 	return client.AttrSpec{
-		IDAttr:            "rollup_project_id",
-		ProjectIDAttr:     "",
-		PathParamAttrs:    map[string]bool{},
-		JSONEncodeAttrs:   map[string]bool{},
-		JSONStringAttrs:   map[string]bool{},
-		JSONEncodeWireKey: map[string]string{},
-		OutputOnlyAttrs:   map[string]bool{"datasets": true, "rollup_projects": true},
-		SpreadAttrs:       map[string]bool{},
+		IDAttr:              "rollup_project_id",
+		ProjectIDAttr:       "",
+		PathParamAttrs:      map[string]bool{},
+		JSONEncodeAttrs:     map[string]bool{},
+		JSONStringAttrs:     map[string]bool{},
+		JSONEncodeWireKey:   map[string]string{},
+		OutputOnlyAttrs:     map[string]bool{"datasets": true, "rollup_projects": true},
+		SpreadAttrs:         map[string]bool{},
+		CreateWritableAttrs: map[string]bool{"dataset_ids": true, "name": true, "org_id": true},
+		UpdateWritableAttrs: map[string]bool{"dataset_ids": true, "name": true, "org_id": true},
 	}
 }

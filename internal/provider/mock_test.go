@@ -101,6 +101,15 @@ type mockOpts struct {
 	matchAttr     string
 }
 
+// capturedRequest records one body-bearing request the mock served, so tests
+// can assert on the EXACT wire body the provider sent (e.g. that an update
+// body contains only allowlisted keys).
+type capturedRequest struct {
+	method string
+	path   string
+	body   map[string]any
+}
+
 // mockServer is an in-memory echo backend for the Mixpanel App API.
 type mockServer struct {
 	*httptest.Server
@@ -108,9 +117,26 @@ type mockServer struct {
 	mu      sync.Mutex
 	store   map[string]map[string]any
 	counter int
+	// captured records every body-bearing request in arrival order (appended by
+	// parseBody). Read it via requests().
+	captured []capturedRequest
 	// shares holds shared-entities project shares keyed by
 	// "<entity_type>/<entity_id>" -> project id -> canEdit. See handleSharedEntities.
 	shares map[string]map[string]bool
+}
+
+// requests returns a copy of the captured body-bearing requests, optionally
+// filtered by method ("" matches all).
+func (m *mockServer) requests(method string) []capturedRequest {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := []capturedRequest{}
+	for _, cr := range m.captured {
+		if method == "" || cr.method == method {
+			out = append(out, cr)
+		}
+	}
+	return out
 }
 
 // newMockServer starts an echo server and registers cleanup. idField defaults to
@@ -517,9 +543,12 @@ func (m *mockServer) parseBody(r *http.Request) map[string]any {
 				out[k] = vs[0]
 			}
 		}
+		m.captured = append(m.captured, capturedRequest{method: r.Method, path: r.URL.Path, body: out})
 		return out
 	}
 	_ = json.NewDecoder(r.Body).Decode(&out)
+	// Caller (handle / handleSharedEntities / handleRPC) holds m.mu.
+	m.captured = append(m.captured, capturedRequest{method: r.Method, path: r.URL.Path, body: out})
 	return out
 }
 

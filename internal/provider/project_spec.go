@@ -17,5 +17,9 @@ func ProjectAttrSpec() client.AttrSpec {
 		JSONEncodeWireKey: map[string]string{},
 		OutputOnlyAttrs:   map[string]bool{"api_key": true, "api_secret": true, "timezone_name": true, "token": true, "url": true},
 		SpreadAttrs:       map[string]bool{},
+		// Writable-field allowlists deliberately EMPTY (filtering bypassed):
+		// RPC lifecycle bodies are hand-shaped (create-projects/delete-projects verbs).
+		CreateWritableAttrs: map[string]bool{},
+		UpdateWritableAttrs: map[string]bool{},
 	}
 }
