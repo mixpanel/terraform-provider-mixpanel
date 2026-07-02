@@ -17,6 +17,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -191,7 +192,7 @@ func accTestPreCheck(t *testing.T) {
 
 // accRandomName generates a unique name for test resources.
 func accRandomName(prefix string) string {
-	return fmt.Sprintf("%s-%d", prefix, resource.UniqueIDSuffix())
+	return resource.PrefixedUniqueId(prefix + "-")
 }
 
 // driftDetectionTestStep returns a TestStep that triggers a refresh and expects no changes.
@@ -250,15 +251,8 @@ func runErrorCaseTest(t *testing.T, tc errorCaseTestConfig) {
 		ProtoV6ProviderFactories: testProtoV6,
 		Steps: []resource.TestStep{
 			{
-				Config: tc.Config,
-				ExpectError: resource.ComposeTestCheckFunc(
-					resource.TestMatchResourceAttr("test", "error", resource.TestCheckResourceAttrWith("test", "error", func(value string) error {
-						if !strings.Contains(value, tc.ExpectError) {
-							return fmt.Errorf("expected error containing %q, got %q", tc.ExpectError, value)
-						}
-						return nil
-					})),
-				),
+				Config:      tc.Config,
+				ExpectError: regexp.MustCompile(tc.ExpectError),
 			},
 		},
 	})

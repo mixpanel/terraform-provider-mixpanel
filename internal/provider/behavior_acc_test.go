@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccBehavior_basic(t *testing.T) {
@@ -141,7 +142,7 @@ resource "mixpanel_behavior" "test" {
 }
 `, name, projectID),
 				// Note: May succeed but break query builder
-				ExpectError: resource.ComposeTestCheckFunc(),
+				// ExpectError can be added here if API returns validation error
 			},
 		},
 	})

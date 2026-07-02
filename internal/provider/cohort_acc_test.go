@@ -161,7 +161,6 @@ resource "mixpanel_cohort" "test" {
   ])
 }
 `, name, projectID),
-				ExpectError: resource.ComposeTestCheckFunc(),
 				// Note: This may succeed on create but break query builder.
 				// This test documents the gap identified in gaps-and-gotchas §3.2.
 				// When validation is added, update ExpectError to match the validation message.

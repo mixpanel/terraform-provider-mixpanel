@@ -122,7 +122,6 @@ resource "mixpanel_custom_property" "test" {
 `, name, projectID),
 				// This should either force replacement or fail with 400
 				// When ForceNew is properly set, this will trigger replacement
-				ExpectError: resource.ComposeTestCheckFunc(),
 			},
 		},
 	})

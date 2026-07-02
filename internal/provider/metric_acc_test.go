@@ -165,7 +165,6 @@ resource "mixpanel_metric" "test" {
 `, name, projectID),
 				// Note: This documents the "2xx but corrupt" class from gaps-and-gotchas §3.2
 				// When validation is added, update to expect proper error
-				ExpectError: resource.ComposeTestCheckFunc(),
 			},
 		},
 	})
