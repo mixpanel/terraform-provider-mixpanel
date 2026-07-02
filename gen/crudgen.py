@@ -1000,9 +1000,10 @@ def resolve_entity(name, man, attr_names, attrs=None, merged=None):
     # through verbatim on the wire (a JSON string like "{}"), not decoded into a
     # JSON object. Such fields are emitted as JSONStringAttrs; the remainder are
     # true dynamic-object jsonencode fields (decoded on the way out, re-encoded on
-    # the way in) emitted as JSONEncodeAttrs. (Bug fix: bookmark.params /
-    # bookmark.metadata are format:json-object; decoding them put `{}` on the wire
-    # and the API rejected "{} is not of type 'string'".)
+    # the way in) emitted as JSONEncodeAttrs. The spec type determines the
+    # classification: type:string format:json-object -> JSONStringAttrs (verbatim
+    # passthrough); anyOf:[{},null] or type:object -> JSONEncodeAttrs
+    # (decoded/re-encoded dynamic objects).
     json_string_raw = json_string_fields_for_entity(merged, man, top_jsonencode_raw)
     jsonencode_obj_raw = [f for f in top_jsonencode_raw if f not in json_string_raw]
     jsonstring_obj_raw = [f for f in top_jsonencode_raw if f in json_string_raw]
