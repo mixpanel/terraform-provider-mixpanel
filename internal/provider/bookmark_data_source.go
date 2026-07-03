@@ -76,12 +76,14 @@ func (d *BookmarkDataSource) Read(ctx context.Context, req datasource.ReadReques
 		resp.Diagnostics.AddError("Reading bookmark", err.Error())
 		return
 	}
-	wire, err := unwrapBody(respBody, true)
+	// unwrapBookmark (shared with the resource) also coerces the GET's
+	// string-typed params/metadata back into the schema's jsonencode form;
+	// the raw unwrap here used to double-encode them.
+	wire, err := unwrapBookmark(respBody)
 	if err != nil {
 		resp.Diagnostics.AddError("Decoding bookmark response", err.Error())
 		return
 	}
-	wire = unwrapResultsMap(wire, false)
 	extras := map[string]any{
 		"bookmark_id": id,
 	}

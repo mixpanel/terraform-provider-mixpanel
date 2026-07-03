@@ -75,12 +75,14 @@ func (d *DashboardDataSource) Read(ctx context.Context, req datasource.ReadReque
 		resp.Diagnostics.AddError("Reading dashboard", err.Error())
 		return
 	}
-	wire, err := unwrapBody(respBody, true)
+	// unwrapDashboard (shared with the resource) also drops the live API's
+	// string-typed layout_version (schema says Int64) and derives the layout
+	// write-format attribute; the raw unwrap here failed on every live read.
+	wire, err := unwrapDashboard(respBody)
 	if err != nil {
 		resp.Diagnostics.AddError("Decoding dashboard response", err.Error())
 		return
 	}
-	wire = unwrapResultsMap(wire, false)
 	extras := map[string]any{
 		"dashboard_id": id,
 	}

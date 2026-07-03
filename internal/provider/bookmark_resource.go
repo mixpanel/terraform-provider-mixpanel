@@ -9,12 +9,37 @@
 // HAND-EDITED EXCEPTION 2: plan-time params validation
 // (ValidateConfig, see analytics_validate.go for the rule table and citations).
 // Re-apply if regenerating.
+//
+// HAND-EDITED EXCEPTION 3: board-report content lifecycle (live-verified
+// 2026-07-03 against the dev webapp). Bookmarks of a board type
+// (insights/retention/funnels/flows — BOARDS_DASHBOARD_BOOKMARK_TYPES,
+// webapp/bookmarks/models.py:90) CANNOT be managed through the standalone
+// bookmark endpoints:
+//
+//   - POST /bookmarks requires dashboard_id but then silently DROPS it
+//     (app_api/projects/bookmarks/views.py create_bookmark pops it without
+//     saving): the fresh GET shows dashboard_id null and no layout cell is
+//     created, so the report never appears on the board.
+//   - DELETE /bookmarks/{id} returns an unconditional HTTP 500 for board
+//     types ("Dashboard related bookmarks must be deleted using the
+//     dashboards API", views.py:509) and the bookmark survives.
+//
+// Create/Delete therefore go through the dashboards content PATCH
+// ({"content":{"action":"create"|"delete",...}}), which atomically creates
+// the bookmark AND its board layout cell (or soft-deletes both). Update
+// (PATCH /bookmarks/{id}) and Read (GET /bookmarks/{id}) still work
+// standalone and are unchanged. dashboard_id is RequiresReplace: the
+// standalone PATCH half-moves a report (the bookmark row updates but the
+// layout cell stays on the old board — live-verified), so the only correct
+// move is delete+create. Re-apply all of this if regenerating.
 
 package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -42,6 +67,17 @@ var _ = schema.StringAttribute{}
 // keep the types package imported (used by nested schema overrides).
 var _ = types.NumberType
 
+// boardsDashboardBookmarkTypes mirrors BOARDS_DASHBOARD_BOOKMARK_TYPES
+// (webapp/bookmarks/models.py:90): bookmark types that are board reports and
+// must be created/deleted through the dashboards content API (see the
+// HAND-EDITED EXCEPTION 3 header note).
+var boardsDashboardBookmarkTypes = map[string]bool{
+	"insights":  true,
+	"retention": true,
+	"funnels":   true,
+	"flows":     true,
+}
+
 // NewBookmarkResource constructs the bookmark resource.
 func NewBookmarkResource() resource.Resource {
 	return &BookmarkResource{}
@@ -61,6 +97,12 @@ func (r *BookmarkResource) Schema(ctx context.Context, req resource.SchemaReques
 	s.Attributes["params"] = schema.StringAttribute{Optional: true, Computed: true}
 	s.Attributes[shareAttrName] = shareWithProjectAttribute()
 	normalizedJSON(s.Attributes, "metadata", "params")
+	// Changing dashboard_id must replace the bookmark: the standalone PATCH
+	// half-moves a board report (bookmark.dashboard_id updates but the layout
+	// cell stays on the old board, so the report keeps rendering there —
+	// live-verified 2026-07-03). Delete+create through the dashboards content
+	// API is the only consistent move.
+	requireReplace(s.Attributes, "dashboard_id")
 	stabilizeComputed(s.Attributes)
 	resp.Schema = s
 }
@@ -114,6 +156,20 @@ func (r *BookmarkResource) ValidateConfig(ctx context.Context, req resource.Vali
 	validatedJSONAttr(ctx, req.Config, "params", &resp.Diagnostics, func(v any) []string {
 		return validateBookmarkParams(v, typeStr)
 	})
+	// Board report types require a dashboard: the report is created through the
+	// dashboards content API and only exists as a cell on that board. An unknown
+	// dashboard_id (e.g. mixpanel_dashboard.x.id before apply) is fine and is
+	// re-checked at apply time.
+	if boardsDashboardBookmarkTypes[typeStr] {
+		var dashID types.String
+		if d := req.Config.GetAttribute(ctx, path.Root("dashboard_id"), &dashID); !d.HasError() {
+			if dashID.IsNull() {
+				resp.Diagnostics.AddAttributeError(path.Root("dashboard_id"),
+					"dashboard_id is required for board report bookmarks",
+					fmt.Sprintf("Bookmarks of type %q are board reports (insights/retention/funnels/flows) and can only be created on a board: the provider creates them through the dashboards content API. Set dashboard_id to the target mixpanel_dashboard's id.", typeStr))
+			}
+		}
+	}
 }
 
 func (r *BookmarkResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -128,15 +184,44 @@ func (r *BookmarkResource) Create(ctx context.Context, req resource.CreateReques
 		resp.Diagnostics.AddError("Encoding bookmark request", err.Error())
 		return
 	}
-	respBody, err := r.client.Do(ctx, "POST", r.collectionPath(projectID), body)
-	if err != nil {
-		resp.Diagnostics.AddError("Creating bookmark", err.Error())
-		return
-	}
-	wire, err := unwrapBookmark(respBody)
-	if err != nil {
-		resp.Diagnostics.AddError("Decoding bookmark response", err.Error())
-		return
+	coerceBookmarkBoolStrings(body)
+	var wire map[string]any
+	bmType, _ := stringAttrFromRaw(req.Plan.Raw, "type")
+	if boardsDashboardBookmarkTypes[bmType] {
+		// Board report: create through the dashboards content API (the
+		// standalone POST silently drops dashboard_id and never places the
+		// report on the board — see the header note).
+		dashboardID, derr := stringAttrFromRaw(req.Plan.Raw, "dashboard_id")
+		if derr != nil || dashboardID == "" {
+			resp.Diagnostics.AddError("Creating bookmark",
+				fmt.Sprintf("dashboard_id is required for %q bookmarks: board reports can only be created on a board through the dashboards content API", bmType))
+			return
+		}
+		wire, err = r.createViaDashboardContent(ctx, projectID, dashboardID, body)
+		if err != nil {
+			resp.Diagnostics.AddError("Creating bookmark", err.Error())
+			return
+		}
+		// The content-create echo (results.new_content.params) is the server's
+		// REWRITTEN params (e.g. insights events normalized into behavior
+		// clauses), while GET /bookmarks/{id} round-trips the user's ORIGINAL
+		// params string (both live-verified 2026-07-03). The planned value is
+		// therefore authoritative; drop the rewritten echo so the apply merge
+		// preserves it instead of failing Terraform's consistency check.
+		if p, perr := stringAttrFromRaw(req.Plan.Raw, "params"); perr == nil && p != "" {
+			delete(wire, "params")
+		}
+	} else {
+		respBody, cerr := r.client.Do(ctx, "POST", r.collectionPath(projectID), body)
+		if cerr != nil {
+			resp.Diagnostics.AddError("Creating bookmark", cerr.Error())
+			return
+		}
+		wire, err = unwrapBookmark(respBody)
+		if err != nil {
+			resp.Diagnostics.AddError("Decoding bookmark response", err.Error())
+			return
+		}
 	}
 	id := idForBookmark(wire)
 	r.writeBookmarkState(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, id)
@@ -194,6 +279,7 @@ func (r *BookmarkResource) Update(ctx context.Context, req resource.UpdateReques
 		resp.Diagnostics.AddError("Encoding bookmark request", err.Error())
 		return
 	}
+	coerceBookmarkBoolStrings(body)
 	respBody, err := r.client.Do(ctx, "PATCH", r.instancePath(projectID, id), body)
 	if err != nil {
 		resp.Diagnostics.AddError("Updating bookmark", err.Error())
@@ -219,6 +305,45 @@ func (r *BookmarkResource) Delete(ctx context.Context, req resource.DeleteReques
 		resp.Diagnostics.AddError("Reading bookmark id", err.Error())
 		return
 	}
+	// Board report types must be deleted through the dashboards content API:
+	// the standalone DELETE returns an unconditional HTTP 500 for them
+	// ("Dashboard related bookmarks must be deleted using the dashboards API")
+	// and leaves the bookmark alive. The content delete soft-deletes the
+	// bookmark AND removes its board layout cell.
+	bmType, _ := stringAttrFromRaw(req.State.Raw, "type")
+	if boardsDashboardBookmarkTypes[bmType] {
+		dashboardID, _ := stringAttrFromRaw(req.State.Raw, "dashboard_id")
+		if dashboardID == "" {
+			// No board recorded in state (hand-edited or legacy state). The
+			// standalone DELETE cannot remove a board report; the best we can do
+			// is confirm it is already gone.
+			if r.bookmarkGone(ctx, projectID, id) {
+				return
+			}
+			resp.Diagnostics.AddError("Deleting bookmark",
+				fmt.Sprintf("bookmark %s is a board report (%s) but its state carries no dashboard_id; board reports can only be deleted through their board (dashboards content API). Refresh the resource or delete the report from its board in the Mixpanel UI.", id, bmType))
+			return
+		}
+		body := map[string]any{"content": map[string]any{
+			"action":       "delete",
+			"content_type": "report",
+			"content_id":   jsonNumberOrString(id),
+		}}
+		if _, derr := r.dashboardContentPatch(ctx, projectID, dashboardID, body); derr != nil {
+			// Tolerate already-gone: a 404 means the board itself was deleted
+			// (its reports go with it); any other failure is re-checked against
+			// the instance GET before erroring (the content delete is idempotent
+			// server-side — live-verified — but be safe about shape surprises).
+			if apiErr, ok := derr.(*client.APIError); ok && apiErr.StatusCode == 404 {
+				return
+			}
+			if r.bookmarkGone(ctx, projectID, id) {
+				return
+			}
+			resp.Diagnostics.AddError("Deleting bookmark", derr.Error())
+		}
+		return
+	}
 	// DELETE may return a JSON body (Mixpanel convention); Do tolerates it.
 	if _, err := r.client.Do(ctx, "DELETE", r.instancePath(projectID, id), nil); err != nil {
 		if apiErr, ok := err.(*client.APIError); ok && apiErr.StatusCode == 404 {
@@ -227,6 +352,78 @@ func (r *BookmarkResource) Delete(ctx context.Context, req resource.DeleteReques
 		resp.Diagnostics.AddError("Deleting bookmark", err.Error())
 		return
 	}
+}
+
+// bookmarkGone reports whether the instance GET says the bookmark no longer
+// exists (used to tolerate already-deleted board reports in Delete).
+func (r *BookmarkResource) bookmarkGone(ctx context.Context, projectID, id string) bool {
+	_, err := r.client.Do(ctx, "GET", r.instancePath(projectID, id), nil)
+	if err == nil {
+		return false
+	}
+	apiErr, ok := err.(*client.APIError)
+	return ok && apiErr.StatusCode == 404
+}
+
+// createViaDashboardContent creates a board report bookmark through the
+// dashboards content PATCH:
+//
+//	PATCH /api/app/projects/{p}/dashboards/{d}
+//	{"content":{"action":"create","content_type":"report",
+//	            "content_params":{"bookmark":{...,"params":"<JSON string>"}}}}
+//
+// and returns results.new_content (the full created bookmark, with
+// dashboard_id set and a board layout row+cell created — live-verified
+// 2026-07-03). The content API takes params as a stringified JSON value, so
+// the decoded object from the generic bridge is re-encoded.
+func (r *BookmarkResource) createViaDashboardContent(ctx context.Context, projectID, dashboardID string, bookmark map[string]any) (map[string]any, error) {
+	// dashboard_id is the PATCH target, not a bookmark content field.
+	delete(bookmark, "dashboard_id")
+	if p, ok := bookmark["params"]; ok {
+		if _, isStr := p.(string); !isStr {
+			b, err := json.Marshal(p)
+			if err != nil {
+				return nil, fmt.Errorf("re-encoding params for the dashboards content API: %w", err)
+			}
+			bookmark["params"] = string(b)
+		}
+	}
+	body := map[string]any{"content": map[string]any{
+		"action":         "create",
+		"content_type":   "report",
+		"content_params": map[string]any{"bookmark": bookmark},
+	}}
+	respBody, err := r.dashboardContentPatch(ctx, projectID, dashboardID, body)
+	if err != nil {
+		return nil, err
+	}
+	results, err := unwrapBody(respBody, true)
+	if err != nil {
+		return nil, err
+	}
+	nc, ok := results["new_content"].(map[string]any)
+	if !ok || nc == nil {
+		keys := make([]string, 0, len(results))
+		for k := range results {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		return nil, fmt.Errorf("dashboard content-create response carries no results.new_content (got keys %v)", keys)
+	}
+	if _, ok := client.IDFromWire(nc, "id"); !ok {
+		return nil, fmt.Errorf("dashboard content-create response new_content carries no id")
+	}
+	return coerceBookmarkJSONStrings(nc), nil
+}
+
+// dashboardContentPatch issues the dashboards content PATCH through the
+// shared conflict-retrying helper (dashboardPatchWithConflictRetry in
+// dashboard_resource.go): the content path is known to return transient 409
+// conflicts, which the shared client (5xx/429 only) does not retry.
+func (r *BookmarkResource) dashboardContentPatch(ctx context.Context, projectID, dashboardID string, body map[string]any) ([]byte, error) {
+	p := strings.NewReplacer("{project_id}", projectID, "{dashboard_id}", dashboardID).
+		Replace("/api/app/projects/{project_id}/dashboards/{dashboard_id}")
+	return dashboardPatchWithConflictRetry(ctx, r.client, p, body)
 }
 
 func (r *BookmarkResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
@@ -281,5 +478,50 @@ func unwrapBookmark(respBody []byte) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return unwrapResultsMap(body, false), nil
+	return coerceBookmarkJSONStrings(unwrapResultsMap(body, false)), nil
+}
+
+// coerceBookmarkBoolStrings converts the "true"/"false" string renderings of
+// is_modification_restricted / is_visibility_restricted back into JSON
+// booleans on an outbound body. The frozen spec (and thus the generated
+// schema) types them as strings, but the live PATCH validator requires
+// booleans (live-verified 2026-07-03: 400 `expected bool for dictionary value
+// @ data['is_modification_restricted']`). The GET echoes booleans, which the
+// string-typed schema stores as "false"/"true", so without this every
+// post-refresh update body would be rejected.
+func coerceBookmarkBoolStrings(body map[string]any) {
+	for _, k := range []string{"is_modification_restricted", "is_visibility_restricted"} {
+		if s, ok := body[k].(string); ok {
+			switch s {
+			case "true":
+				body[k] = true
+			case "false":
+				body[k] = false
+			}
+		}
+	}
+}
+
+// coerceBookmarkJSONStrings normalizes the bookmark params/metadata wire form.
+// GET /bookmarks/{id} (and the instance PATCH echo) return `params` as a
+// STRINGIFIED JSON value — live-verified 2026-07-03 the string is the user's
+// ORIGINAL params, round-tripped verbatim — while the schema treats params as
+// a jsonencode object attribute (the POST/PATCH request wire carries the
+// decoded object). Parsing the string back into its JSON value lets the
+// generic bridge re-encode it canonically; without this the refresh would
+// json.Marshal the string itself into a quoted JSON string literal and
+// manufacture permanent drift against the user's jsonencode({...}) object.
+// A string that is not valid JSON is left untouched.
+func coerceBookmarkJSONStrings(wire map[string]any) map[string]any {
+	for _, k := range []string{"params", "metadata"} {
+		if s, ok := wire[k].(string); ok && s != "" {
+			var decoded any
+			dec := json.NewDecoder(strings.NewReader(s))
+			dec.UseNumber() // preserve large integer ids exactly (see normalizeNumbers)
+			if err := dec.Decode(&decoded); err == nil {
+				wire[k] = normalizeNumbers(decoded)
+			}
+		}
+	}
+	return wire
 }

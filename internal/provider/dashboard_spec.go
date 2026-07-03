@@ -3,6 +3,16 @@
 // HAND-EDITED EXCEPTION: "share_with_project" added to PathParamAttrs so the
 // synthetic sharing attribute (see sharing.go) is never serialized into
 // entity request bodies. Re-apply if regenerating.
+//
+// HAND-EDITED EXCEPTION 2: synthetic "layout" attribute (board layout in the
+// dashboards PATCH write format — see dashboard_resource.go): added to
+// JSONEncodeAttrs (jsonencode string <-> JSON object bridge) and to
+// UpdateWritableAttrs (PATCH is the only verified persistence path for it).
+// Deliberately NOT in CreateWritableAttrs: the resource applies a configured
+// layout with a follow-up PATCH after the POST. The generated `cards` /
+// `rows` attributes stay create-only (`cards` on PATCH is rejected with 400;
+// `rows` is schema-inexpressible) and must never join UpdateWritableAttrs.
+// Re-apply if regenerating.
 
 package provider
 
@@ -16,12 +26,12 @@ func DashboardAttrSpec() client.AttrSpec {
 		IDAttr:              "id",
 		ProjectIDAttr:       "project_id",
 		PathParamAttrs:      map[string]bool{"share_with_project": true, "dashboard_id": true},
-		JSONEncodeAttrs:     map[string]bool{},
+		JSONEncodeAttrs:     map[string]bool{"layout": true},
 		JSONStringAttrs:     map[string]bool{},
 		JSONEncodeWireKey:   map[string]string{"card_order": "card_order", "creator_email": "creator_email", "creator_id": "creator_id", "creator_name": "creator_name", "generation_type": "generation_type", "global_access_type": "global_access_type", "is_draft": "is_draft", "is_favorited": "is_favorited", "is_private": "is_private", "is_restricted": "is_restricted", "layout_version": "layout_version", "pinned_date": "pinned_date", "target_parent_dashboard_id": "target_parent_dashboard_id", "target_project_id": "target_project_id", "template_type": "template_type", "time_filter": "time_filter", "total_view_count": "total_view_count", "unique_view_count": "unique_view_count"},
 		OutputOnlyAttrs:     map[string]bool{"created": true, "creator": true, "creator_email": true, "creator_id": true, "creator_name": true, "is_favorited": true, "layout_version": true, "modified": true, "pinned_date": true, "template_type": true, "total_view_count": true, "unique_view_count": true},
 		SpreadAttrs:         map[string]bool{},
 		CreateWritableAttrs: map[string]bool{"card_order": true, "cards": true, "description": true, "duplicate": true, "filters": true, "generation_type": true, "global_access_type": true, "is_draft": true, "is_private": true, "is_restricted": true, "rows": true, "target_parent_dashboard_id": true, "target_project_id": true, "time_filter": true, "title": true},
-		UpdateWritableAttrs: map[string]bool{"card_order": true, "description": true, "filters": true, "global_access_type": true, "is_private": true, "is_restricted": true, "time_filter": true, "title": true},
+		UpdateWritableAttrs: map[string]bool{"card_order": true, "description": true, "filters": true, "global_access_type": true, "is_private": true, "is_restricted": true, "layout": true, "time_filter": true, "title": true},
 	}
 }

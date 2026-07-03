@@ -3,6 +3,13 @@
 // HAND-EDITED EXCEPTION: "share_with_project" added to PathParamAttrs so the
 // synthetic sharing attribute (see sharing.go) is never serialized into
 // entity request bodies. Re-apply if regenerating.
+//
+// HAND-EDITED EXCEPTION 2: "dashboard_id" removed from UpdateWritableAttrs.
+// A dashboard_id change is a board MOVE, which the standalone bookmark PATCH
+// only half-performs (the bookmark row updates but the board layout cell does
+// not move — live-verified 2026-07-03); the resource marks dashboard_id
+// RequiresReplace instead, so it must never ride along in an update body.
+// Re-apply if regenerating.
 
 package provider
 
@@ -22,6 +29,6 @@ func BookmarkAttrSpec() client.AttrSpec {
 		OutputOnlyAttrs:     map[string]bool{"allow_staff_override": true, "can_share": true, "can_update_basic": true, "can_view": true, "created": true, "creator": true, "creator_email": true, "creator_id": true, "creator_name": true, "generation_type": true, "include_in_dashboard": true, "is_default": true, "is_superadmin": true, "last_modified_by_email": true, "last_modified_by_id": true, "last_modified_by_name": true, "modified": true, "original_type": true, "total_view_count": true, "unique_view_count": true, "workspace_id": true},
 		SpreadAttrs:         map[string]bool{},
 		CreateWritableAttrs: map[string]bool{"bookmark_url_slug": true, "dashboard_id": true, "deleted": true, "description": true, "global_access_type": true, "icon": true, "is_modification_restricted": true, "is_visibility_restricted": true, "name": true, "params": true, "prev_bookmark_url_slug": true, "type": true, "v": true},
-		UpdateWritableAttrs: map[string]bool{"bookmark_url_slug": true, "dashboard_id": true, "deleted": true, "description": true, "icon": true, "is_modification_restricted": true, "is_visibility_restricted": true, "name": true, "params": true, "prev_bookmark_url_slug": true, "type": true, "v": true},
+		UpdateWritableAttrs: map[string]bool{"bookmark_url_slug": true, "deleted": true, "description": true, "icon": true, "is_modification_restricted": true, "is_visibility_restricted": true, "name": true, "params": true, "prev_bookmark_url_slug": true, "type": true, "v": true},
 	}
 }

@@ -183,6 +183,18 @@ func (m *mockServer) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Dashboards instance PATCH routes, additive: they model the board content
+	// API (create/delete a board report bookmark, which the bookmark resource
+	// uses for BOARDS_DASHBOARD_BOOKMARK_TYPES) and the layout write format
+	// (stored back in the GET shape so provider refreshes exercise the
+	// read-shape transform). Only PATCHes to a .../dashboards/{id} path are
+	// intercepted; every other entity still hits the generic CRUD switch.
+	// Caller must NOT hold m.mu here; we do (locked above).
+	if r.Method == http.MethodPatch && strings.Contains(r.URL.Path, "/dashboards/") {
+		m.handleDashboardPatch(w, r)
+		return
+	}
+
 	// Lifecycle verb routes (feature flags + experiments), additive: they model
 	// POST/DELETE {id}/archive, PUT {id}/launch, PUT|POST {id}/force_conclude
 	// and PATCH {id}/decide so desired_state transition tests can run against
@@ -284,6 +296,194 @@ func (m *mockServer) handle(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 	}
+}
+
+// handleDashboardPatch answers PATCH .../dashboards/{id} the way the real API
+// behaves (live-verified 2026-07-03):
+//
+//   - body {"content":{"action":"create","content_type":"report",
+//     "content_params":{"bookmark":{...}}}} creates the bookmark (stored so
+//     GET .../bookmarks/{id} serves it, params kept as the STRING the
+//     provider sent — matching the live GET), grows the dashboard's
+//     GET-shape layout by one row+cell, and echoes the full dashboard with
+//     `new_content` whose params are REWRITTEN into an object (the live
+//     server normalizes params in the content-create echo).
+//   - body {"content":{"action":"delete","content_id":N}} removes the stored
+//     bookmark and its layout cell(s); repeating the delete is a 200 no-op.
+//   - a body carrying "layout" in the WRITE format ({"rows":[...],
+//     "rows_order":[...]}) is converted to the GET shape ({"rows":{id:row},
+//     "order":[...],"version":"2.0.0"}, cells enriched with content
+//     pointers) before storing, so refreshes exercise the provider's
+//     read-shape transform.
+//   - anything else merges like the generic PATCH.
+//
+// Caller holds m.mu.
+func (m *mockServer) handleDashboardPatch(w http.ResponseWriter, r *http.Request) {
+	id := lastSegment(r.URL.Path)
+	obj, ok := m.store[id]
+	if !ok {
+		http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+		return
+	}
+	body := m.parseBody(r)
+	if content, ok := body["content"].(map[string]any); ok {
+		m.handleDashboardContent(w, id, obj, content)
+		return
+	}
+	if lay, ok := body["layout"].(map[string]any); ok {
+		if converted, ok := mockLayoutGetShapeFromWrite(lay); ok {
+			body["layout"] = converted
+		}
+	}
+	for k, v := range body {
+		obj[k] = v
+	}
+	obj[m.opts.idField] = m.idValue(id)
+	m.store[id] = obj
+	m.respond(w, id, obj)
+}
+
+// handleDashboardContent models the board content actions. Caller holds m.mu.
+func (m *mockServer) handleDashboardContent(w http.ResponseWriter, dashID string, dash map[string]any, content map[string]any) {
+	action, _ := content["action"].(string)
+	switch action {
+	case "create":
+		cp, _ := content["content_params"].(map[string]any)
+		bm, _ := cp["bookmark"].(map[string]any)
+		if bm == nil {
+			http.Error(w, `{"status":"error","error":"content_params.bookmark required"}`, http.StatusBadRequest)
+			return
+		}
+		m.counter++
+		idStr := strconv.Itoa(m.counter)
+		stored := map[string]any{}
+		for k, v := range bm {
+			stored[k] = v
+		}
+		stored[m.opts.idField] = m.idValue(idStr)
+		stored["dashboard_id"] = m.idValue(dashID)
+		m.store[idStr] = stored
+		// new_content echoes the bookmark with params rewritten into an object.
+		echo := map[string]any{}
+		for k, v := range stored {
+			echo[k] = v
+		}
+		if s, ok := stored["params"].(string); ok {
+			var decoded map[string]any
+			if json.Unmarshal([]byte(s), &decoded) == nil && decoded != nil {
+				decoded["__mock_server_rewritten"] = true
+				echo["params"] = decoded
+			}
+		}
+		layout := mockDashboardLayoutOf(dash)
+		rows, _ := layout["rows"].(map[string]any)
+		rowID := "row" + idStr
+		rows[rowID] = map[string]any{
+			"height": 0.0,
+			"cells": []any{map[string]any{
+				"id": "cell" + idStr, "width": 12.0,
+				"content_id": m.idValue(idStr), "content_type": "report",
+			}},
+		}
+		layout["order"] = append(mockAnySlice(layout["order"]), rowID)
+		dash["layout"] = layout
+		m.store[dashID] = dash
+		respObj := map[string]any{}
+		for k, v := range dash {
+			respObj[k] = v
+		}
+		respObj["new_content"] = echo
+		m.respondValue(w, respObj)
+	case "delete":
+		cid := idToKey(content["content_id"])
+		delete(m.store, cid)
+		layout := mockDashboardLayoutOf(dash)
+		rows, _ := layout["rows"].(map[string]any)
+		newOrder := []any{}
+		for _, ro := range mockAnySlice(layout["order"]) {
+			rid, _ := ro.(string)
+			row, _ := rows[rid].(map[string]any)
+			if row == nil {
+				continue
+			}
+			kept := []any{}
+			for _, c := range mockAnySlice(row["cells"]) {
+				cm, _ := c.(map[string]any)
+				if cm != nil && idToKey(cm["content_id"]) == cid {
+					continue
+				}
+				kept = append(kept, c)
+			}
+			if len(kept) == 0 {
+				delete(rows, rid)
+				continue
+			}
+			row["cells"] = kept
+			newOrder = append(newOrder, rid)
+		}
+		layout["order"] = newOrder
+		dash["layout"] = layout
+		m.store[dashID] = dash
+		m.respondValue(w, dash)
+	default:
+		http.Error(w, `{"status":"error","error":"unsupported content action"}`, http.StatusBadRequest)
+	}
+}
+
+// mockDashboardLayoutOf returns the dashboard's GET-shape layout, creating an
+// empty one ({"rows":{},"order":[],"version":"2.0.0"}) when absent.
+func mockDashboardLayoutOf(dash map[string]any) map[string]any {
+	if l, ok := dash["layout"].(map[string]any); ok {
+		if _, ok := l["rows"].(map[string]any); ok {
+			return l
+		}
+	}
+	l := map[string]any{"rows": map[string]any{}, "order": []any{}, "version": "2.0.0"}
+	dash["layout"] = l
+	return l
+}
+
+// mockLayoutGetShapeFromWrite converts a layout WRITE body into the GET shape
+// the real dashboards GET returns (rows dict keyed by row id, order list,
+// version string, cells enriched with content pointers).
+func mockLayoutGetShapeFromWrite(lay map[string]any) (map[string]any, bool) {
+	rowsList, ok := lay["rows"].([]any)
+	if !ok {
+		return nil, false
+	}
+	rows := map[string]any{}
+	order := []any{}
+	if ro, ok := lay["rows_order"].([]any); ok {
+		order = ro
+	}
+	for _, rr := range rowsList {
+		rm, ok := rr.(map[string]any)
+		if !ok {
+			continue
+		}
+		rid, _ := rm["id"].(string)
+		if rid == "" {
+			rid, _ = rm["temp_id"].(string)
+		}
+		cells := []any{}
+		for _, c := range mockAnySlice(rm["cells"]) {
+			cm, _ := c.(map[string]any)
+			if cm == nil {
+				continue
+			}
+			cells = append(cells, map[string]any{
+				"id": cm["id"], "width": cm["width"],
+				"content_id": nil, "content_type": "report",
+			})
+		}
+		rows[rid] = map[string]any{"height": rm["height"], "cells": cells}
+	}
+	return map[string]any{"rows": rows, "order": order, "version": "2.0.0"}, true
+}
+
+func mockAnySlice(v any) []any {
+	s, _ := v.([]any)
+	return s
 }
 
 // lifecycleVerb recognizes lifecycle verb paths ({id}/archive, {id}/launch,
