@@ -16,6 +16,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"regexp"
 	"strconv"
@@ -151,6 +152,13 @@ func accCheckResourceAttrIsInt(name, attr string) resource.TestCheckFunc {
 
 // accCheckDestroy verifies that resources of a given type are destroyed.
 // This is a generic destroy check that can be used for any resource type.
+//
+// NOTE: terraform-plugin-testing passes CheckDestroy the final state from
+// BEFORE the destroy (so tests can query the backend per resource); a
+// state-map-emptiness check like this one therefore FAILS on any test that
+// held a resource at destroy time. Prefer accCheckEntityGone (below), which
+// asks the live API. This is kept only for tests that never reach a
+// successful apply (error-case tests) where the state is genuinely empty.
 func accCheckDestroy(resourceType string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		for _, rs := range s.RootModule().Resources {
@@ -159,6 +167,55 @@ func accCheckDestroy(resourceType string) resource.TestCheckFunc {
 			}
 			// Resource still exists in state after destroy
 			return fmt.Errorf("resource %s %s still exists after destroy", resourceType, rs.Primary.ID)
+		}
+		return nil
+	}
+}
+
+// accCheckEntityGone returns a CheckDestroy that verifies via the live API
+// that every resource of the given type recorded in the (pre-destroy) state
+// is gone. idAttr names the resource's identity attribute (falling back to
+// the state ID), pathFmt receives (projectID, id), and goneStatus lists the
+// HTTP status codes that mean "gone" for this entity (404 for most; behaviors
+// surface a raw 500 Behavior.DoesNotExist in the dev environment).
+func accCheckEntityGone(resourceType, idAttr, pathFmt string, goneStatus ...int) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		base := os.Getenv("MIXPANEL_BASE_URL")
+		if base == "" {
+			base = "https://mixpanel.com"
+		}
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != resourceType {
+				continue
+			}
+			id := rs.Primary.Attributes[idAttr]
+			if id == "" {
+				id = rs.Primary.ID
+			}
+			projectID := rs.Primary.Attributes["project_id"]
+			if projectID == "" {
+				projectID = os.Getenv("MIXPANEL_PROJECT_ID")
+			}
+			req, err := http.NewRequest(http.MethodGet, base+fmt.Sprintf(pathFmt, projectID, id), nil)
+			if err != nil {
+				return err
+			}
+			req.SetBasicAuth(os.Getenv("MIXPANEL_SERVICE_ACCOUNT"), os.Getenv("MIXPANEL_SERVICE_ACCOUNT_SECRET"))
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				return fmt.Errorf("checking %s %s after destroy: %w", resourceType, id, err)
+			}
+			resp.Body.Close()
+			gone := false
+			for _, code := range goneStatus {
+				if resp.StatusCode == code {
+					gone = true
+					break
+				}
+			}
+			if !gone {
+				return fmt.Errorf("%s %s still exists after destroy (GET returned %d, want one of %v)", resourceType, id, resp.StatusCode, goneStatus)
+			}
 		}
 		return nil
 	}

@@ -205,8 +205,19 @@ func (r *MetricResource) Delete(ctx context.Context, req resource.DeleteRequest,
 		resp.Diagnostics.AddError("Reading metric id", err.Error())
 		return
 	}
-	// DELETE may return a JSON body (Mixpanel convention); Do tolerates it.
-	if _, err := r.client.Do(ctx, "DELETE", r.instancePath(projectID, id), nil); err != nil {
+	// HAND-EDITED EXCEPTION (live-verified 2026-07-03): the metrics instance
+	// DELETE is not implemented by the API for behavior metrics either —
+	// DELETE /api/app/projects/{pid}/metrics/{id} returns 501 NOT IMPLEMENTED,
+	// exactly as for formulas (same endpoint family). Metrics are removed via
+	// the BULK delete on the collection path with the ids in the body:
+	//   DELETE /api/app/projects/{pid}/metrics  {"metrics":[{"id":<id>}]}
+	// which responds {"status":"ok","results":{}} and silently skips ids that
+	// no longer exist (soft delete filters id__in), so an already-deleted
+	// metric destroys cleanly. A 404 (project/path gone) is also success.
+	delBody := map[string]any{
+		"metrics": []any{map[string]any{"id": formulaBulkDeleteID(id)}},
+	}
+	if _, err := r.client.Do(ctx, "DELETE", r.collectionPath(projectID), delBody); err != nil {
 		if apiErr, ok := err.(*client.APIError); ok && apiErr.StatusCode == 404 {
 			return
 		}

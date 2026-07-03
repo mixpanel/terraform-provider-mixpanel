@@ -655,11 +655,30 @@ func tfFromNative(t tftypes.Type, v any, jsonEncode bool) (tftypes.Value, error)
 			return tftypes.NewValue(tftypes.String, fmt.Sprintf("%v", v)), nil
 		}
 	case t.Is(tftypes.Bool):
-		b, ok := v.(bool)
-		if !ok {
+		switch b := v.(type) {
+		case bool:
+			return tftypes.NewValue(tftypes.Bool, b), nil
+		case float64:
+			// Django-backed endpoints serialize some boolean columns as 0/1
+			// integers on GET/PUT while the create path returns real JSON
+			// booleans (live-verified 2026-07-03: custom_events "deleted" is
+			// false on create but 0/1 on read). Coerce exactly 0 and 1; any
+			// other number is still a schema mismatch.
+			if b == 0 {
+				return tftypes.NewValue(tftypes.Bool, false), nil
+			}
+			if b == 1 {
+				return tftypes.NewValue(tftypes.Bool, true), nil
+			}
+			return tftypes.Value{}, fmt.Errorf("expected a JSON boolean for a bool attribute, got %T (%v)", v, v)
+		case int64:
+			if b == 0 || b == 1 {
+				return tftypes.NewValue(tftypes.Bool, b == 1), nil
+			}
+			return tftypes.Value{}, fmt.Errorf("expected a JSON boolean for a bool attribute, got %T (%v)", v, v)
+		default:
 			return tftypes.Value{}, fmt.Errorf("expected a JSON boolean for a bool attribute, got %T (%v)", v, v)
 		}
-		return tftypes.NewValue(tftypes.Bool, b), nil
 	case t.Is(tftypes.Number):
 		switch n := v.(type) {
 		case float64:

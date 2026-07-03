@@ -252,5 +252,19 @@ func unwrapCustomEvent(respBody []byte) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return unwrapResultsMap(body, false), nil
+	out := unwrapResultsMap(body, false)
+	// HAND-EDITED EXCEPTION (live-verified 2026-07-03): the API nests the
+	// entity under "custom_event" and never echoes the writable top-level
+	// `name` field, so without hoisting it an IMPORT leaves name null and an
+	// out-of-band rename never surfaces as drift. alternatives is deliberately
+	// NOT hoisted: its wire shape (list of objects) differs from the writable
+	// form-field string and would produce false drift.
+	if ce, ok := out["custom_event"].(map[string]any); ok {
+		if _, exists := out["name"]; !exists {
+			if n, ok := ce["name"]; ok {
+				out["name"] = n
+			}
+		}
+	}
+	return out, nil
 }

@@ -5,7 +5,10 @@ package provider
 
 import (
 	"fmt"
+	"io"
+	"net/http"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -25,7 +28,7 @@ func TestAccProject_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testProtoV6,
 		PreCheck:                 func() { accTestPreCheck(t) },
-		CheckDestroy:             accCheckDestroy("mixpanel_project"),
+		CheckDestroy:             accCheckProjectGone(),
 		Steps: []resource.TestStep{
 			{
 				// Create
@@ -70,7 +73,7 @@ func TestAccProject_renameInPlace(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testProtoV6,
 		PreCheck:                 func() { accTestPreCheck(t) },
-		CheckDestroy:             accCheckDestroy("mixpanel_project"),
+		CheckDestroy:             accCheckProjectGone(),
 		Steps: []resource.TestStep{
 			{
 				// Create
@@ -133,7 +136,7 @@ func TestAccProject_rpcLifecycle(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testProtoV6,
 		PreCheck:                 func() { accTestPreCheck(t) },
-		CheckDestroy:             accCheckDestroy("mixpanel_project"),
+		CheckDestroy:             accCheckProjectGone(),
 		Steps: []resource.TestStep{
 			{
 				// Create - tests RPC lifecycle (create-projects endpoint)
@@ -184,7 +187,7 @@ func TestAccProject_multipleProjects(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testProtoV6,
 		PreCheck:                 func() { accTestPreCheck(t) },
-		CheckDestroy:             accCheckDestroy("mixpanel_project"),
+		CheckDestroy:             accCheckProjectGone(),
 		Steps: []resource.TestStep{
 			{
 				// Create multiple projects to test bulk create endpoint
@@ -208,4 +211,57 @@ resource "mixpanel_project" "test2" {
 			},
 		},
 	})
+}
+
+// accCheckProjectGone verifies via the live API that every mixpanel_project in
+// the (pre-destroy) state is absent from the organization's project list.
+// Project delete is a soft delete (delete-projects RPC); a deleted project
+// drops out of GET /organizations/{org}/projects/, which is also what the
+// resource's Read consults. The state-emptiness accCheckDestroy cannot work
+// here (plugin-testing hands CheckDestroy the pre-destroy state).
+func accCheckProjectGone() resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		orgID := os.Getenv("MIXPANEL_ORGANIZATION_ID")
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "mixpanel_project" {
+				continue
+			}
+			listing, err := accAPIGet(fmt.Sprintf("/organizations/%s/projects/", orgID))
+			if err != nil {
+				return fmt.Errorf("listing org projects after destroy: %w", err)
+			}
+			if strings.Contains(listing, fmt.Sprintf(`"id": %s,`, rs.Primary.ID)) ||
+				strings.Contains(listing, fmt.Sprintf(`"id":%s,`, rs.Primary.ID)) {
+				return fmt.Errorf("project %s still present in org listing after destroy", rs.Primary.ID)
+			}
+		}
+		return nil
+	}
+}
+
+// accAPIGet performs an authenticated GET against the live test API and
+// returns the response body as a string.
+func accAPIGet(path string) (string, error) {
+	base := os.Getenv("MIXPANEL_BASE_URL")
+	if base == "" {
+		base = "https://mixpanel.com"
+	}
+	req, err := http.NewRequest(http.MethodGet, base+path, nil)
+	if err != nil {
+		return "", err
+	}
+	req.SetBasicAuth(os.Getenv("MIXPANEL_SERVICE_ACCOUNT"), os.Getenv("MIXPANEL_SERVICE_ACCOUNT_SECRET"))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("GET %s returned %d", path, resp.StatusCode)
+	}
+	return string(body), nil
 }
