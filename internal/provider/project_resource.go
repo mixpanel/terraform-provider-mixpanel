@@ -119,7 +119,7 @@ func (r *ProjectResource) Create(ctx context.Context, req resource.CreateRequest
 		resp.Diagnostics.AddError("Creating project", "create response did not contain the new project (no element matching name)")
 		return
 	}
-	r.writeProjectState(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, id)
+	r.writeProjectState(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, id)
 }
 
 func (r *ProjectResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -151,9 +151,10 @@ func (r *ProjectResource) Read(ctx context.Context, req resource.ReadRequest, re
 		resp.State.RemoveResource(ctx)
 		return
 	}
-	// Merge against prior state: the list item may omit user-managed fields the
-	// API never echoes back; preserve those instead of clobbering to null.
-	r.writeProjectState(ctx, &resp.State, &resp.Diagnostics, req.State.Raw, wire, projectID, id)
+	// Wire-preferred refresh (client.MergeRead): the list item wins for every
+	// field it carries (drift detection); prior state fills only the fields the
+	// listing omits (fields the API never echoes back are preserved, not nulled).
+	r.writeProjectState(ctx, &resp.State, &resp.Diagnostics, client.MergeRead, req.State.Raw, wire, projectID, id)
 }
 
 func (r *ProjectResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -232,7 +233,7 @@ func (r *ProjectResource) Update(ctx context.Context, req resource.UpdateRequest
 		resp.Diagnostics.AddError("Reading project after rename", fmt.Sprintf("project %s not found in organization project list after rename", id))
 		return
 	}
-	r.writeProjectState(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, id)
+	r.writeProjectState(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, id)
 }
 
 func (r *ProjectResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -270,11 +271,12 @@ func (r *ProjectResource) ImportState(ctx context.Context, req resource.ImportSt
 	setImportID(ctx, &resp.State, &resp.Diagnostics, "id", parts[1], "int64")
 }
 
-// writeProjectState turns an unwrapped API body into resource state. base is the
-// planned raw value (req.Plan.Raw) on create/update so config-supplied values are
-// preserved verbatim, or a null tftypes.Value on read (state is rebuilt from the
-// API response alone). See client.RawFromWireMerged for the merge semantics.
-func (r *ProjectResource) writeProjectState(ctx context.Context, state *tfsdk.State, diags *diagAppender, base tftypes.Value, wire map[string]any, projectID, id string) {
+// writeProjectState turns an unwrapped API body into resource state. On
+// create/update (client.MergeApply, base = req.Plan.Raw) config-supplied values
+// are preserved verbatim; on read (client.MergeRead, base = req.State.Raw) the
+// API response wins wherever it carries a field, so drift is refreshed into
+// state. See client.RawFromWireMerged for the exact merge semantics.
+func (r *ProjectResource) writeProjectState(ctx context.Context, state *tfsdk.State, diags *diagAppender, mode client.MergeMode, base tftypes.Value, wire map[string]any, projectID, id string) {
 	extras := map[string]any{
 		"id": id,
 	}
@@ -282,7 +284,7 @@ func (r *ProjectResource) writeProjectState(ctx context.Context, state *tfsdk.St
 		extras["organization_id"] = projectID
 	}
 	schemaType := state.Schema.Type().TerraformType(ctx)
-	val, err := client.RawFromWireMerged(schemaType, base, wire, extras, ProjectAttrSpec())
+	val, err := client.RawFromWireMerged(schemaType, mode, base, wire, extras, ProjectAttrSpec())
 	if err != nil {
 		diags.AddError("Building project state", err.Error())
 		return

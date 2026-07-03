@@ -86,6 +86,23 @@ resource "mixpanel_dashboard" "example" {
 }
 ```
 
+These JSON string attributes use semantic JSON equality
+(`jsontypes.Normalized`): key order, whitespace, and number-rendering
+differences between your configuration and the server's echo are never
+reported as diffs, while real changes are.
+
+## Drift detection
+
+`terraform plan` / `terraform refresh` re-read every resource from the API
+with **wire-preferred** semantics: any field the GET response carries wins
+over prior state, so edits made in the Mixpanel webapp (a renamed cohort, a
+rewritten `groups` definition, a changed feature-flag ruleset) show up as
+drift and the next `terraform apply` converges the server back to your
+configuration. Fields the API does not echo back on GET keep their prior
+state value. See the
+[drift detection guide](docs/guides/drift-detection.md) for the exact merge
+rules and limitations.
+
 ## Resources
 
 `mixpanel_agent_flow`, `mixpanel_annotation`, `mixpanel_bookmark`, `mixpanel_canvas`,

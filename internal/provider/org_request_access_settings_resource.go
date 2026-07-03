@@ -46,6 +46,7 @@ func (r *OrgRequestAccessSettingsResource) Schema(ctx context.Context, req resou
 	s := rsc.OrgRequestAccessSettingsResourceSchema(ctx)
 	s.Attributes["id"] = schema.StringAttribute{Computed: true}
 	requireReplace(s.Attributes, "organization_id")
+	normalizedJSON(s.Attributes, "settings")
 	stabilizeComputed(s.Attributes)
 	resp.Schema = s
 }
@@ -121,7 +122,7 @@ func (r *OrgRequestAccessSettingsResource) Create(ctx context.Context, req resou
 		return
 	}
 	wire = wrapSingleton(wire, "settings")
-	r.writeOrgRequestAccessSettingsState(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, scopeID, scopeID)
+	r.writeOrgRequestAccessSettingsState(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, scopeID, scopeID)
 }
 
 func (r *OrgRequestAccessSettingsResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -146,7 +147,7 @@ func (r *OrgRequestAccessSettingsResource) Read(ctx context.Context, req resourc
 	}
 	wire = wrapSingleton(wire, "settings")
 	// synthetic id = project id (a project singleton has one settings object).
-	r.writeOrgRequestAccessSettingsState(ctx, &resp.State, &resp.Diagnostics, req.State.Raw, wire, projectID, projectID)
+	r.writeOrgRequestAccessSettingsState(ctx, &resp.State, &resp.Diagnostics, client.MergeRead, req.State.Raw, wire, projectID, projectID)
 }
 
 func (r *OrgRequestAccessSettingsResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -181,7 +182,7 @@ func (r *OrgRequestAccessSettingsResource) Update(ctx context.Context, req resou
 		return
 	}
 	wire = wrapSingleton(wire, "settings")
-	r.writeOrgRequestAccessSettingsState(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, scopeID, scopeID)
+	r.writeOrgRequestAccessSettingsState(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, scopeID, scopeID)
 }
 
 func (r *OrgRequestAccessSettingsResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -204,11 +205,12 @@ func (r *OrgRequestAccessSettingsResource) ImportState(ctx context.Context, req 
 	setImportID(ctx, &resp.State, &resp.Diagnostics, "id", req.ID, "string")
 }
 
-// writeOrgRequestAccessSettingsState turns an unwrapped API body into resource state. base is the
-// planned raw value (req.Plan.Raw) on create/update so config-supplied values are
-// preserved verbatim, or a null tftypes.Value on read (state is rebuilt from the
-// API response alone). See client.RawFromWireMerged for the merge semantics.
-func (r *OrgRequestAccessSettingsResource) writeOrgRequestAccessSettingsState(ctx context.Context, state *tfsdk.State, diags *diagAppender, base tftypes.Value, wire map[string]any, projectID, id string) {
+// writeOrgRequestAccessSettingsState turns an unwrapped API body into resource state. On
+// create/update (client.MergeApply, base = req.Plan.Raw) config-supplied values
+// are preserved verbatim; on read (client.MergeRead, base = req.State.Raw) the
+// API response wins wherever it carries a field, so drift is refreshed into
+// state. See client.RawFromWireMerged for the exact merge semantics.
+func (r *OrgRequestAccessSettingsResource) writeOrgRequestAccessSettingsState(ctx context.Context, state *tfsdk.State, diags *diagAppender, mode client.MergeMode, base tftypes.Value, wire map[string]any, projectID, id string) {
 	extras := map[string]any{
 		"id": id,
 	}
@@ -216,7 +218,7 @@ func (r *OrgRequestAccessSettingsResource) writeOrgRequestAccessSettingsState(ct
 		extras["organization_id"] = projectID
 	}
 	schemaType := state.Schema.Type().TerraformType(ctx)
-	val, err := client.RawFromWireMerged(schemaType, base, wire, extras, OrgRequestAccessSettingsAttrSpec())
+	val, err := client.RawFromWireMerged(schemaType, mode, base, wire, extras, OrgRequestAccessSettingsAttrSpec())
 	if err != nil {
 		diags.AddError("Building org_request_access_settings state", err.Error())
 		return

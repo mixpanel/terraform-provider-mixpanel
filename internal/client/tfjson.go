@@ -7,6 +7,37 @@
 // without per-attribute code. The per-entity resource/data-source files only
 // supply small descriptors (which keys are synthetic, which are jsonencode
 // passthroughs); all the heavy lifting lives here and is hand-written/audited.
+//
+// # Read vs apply merge semantics (drift detection)
+//
+// State after an API call is built by RawFromWireMerged, which overlays the
+// API response onto a base value. The MergeMode decides who wins per
+// top-level attribute:
+//
+//   - MergeApply (Create/Update, base = req.Plan.Raw): a fully-known,
+//     non-null PLANNED value is preserved verbatim, keeping Terraform's
+//     "planned value must equal applied value" contract even when the API
+//     does not echo the field back. The one exception is jsonencode
+//     attributes: when the response carries the field, the wire value wins
+//     (the server may normalize or enrich the JSON); spurious diffs from
+//     re-rendering are absorbed by jsontypes.Normalized semantic equality at
+//     the framework level.
+//
+//   - MergeRead (Read/refresh, base = req.State.Raw): the WIRE value wins
+//     whenever the response carries the field, so out-of-band edits are
+//     refreshed into state and `terraform plan` surfaces the drift. The
+//     prior state value is kept ONLY when the response omits the field or
+//     returns JSON null — the documented echo gaps: fields the API never
+//     returns on GET (form-encoded echoes, write-only secrets), spread
+//     attributes (never echoed verbatim), and partial reads (custom_alert).
+//     A wire value whose JSON shape cannot be converted to the schema type
+//     also falls back to the prior value (refresh degrades to
+//     no-drift-visible for that attribute instead of failing the whole
+//     Read against a live-API shape surprise).
+//
+// Identity / synthetic attributes supplied via extras always win in both
+// modes (they carry path params, resolved project ids, and lifecycle values
+// such as a feature flag's desired_state derived from the response).
 package client
 
 import (
@@ -387,9 +418,9 @@ func nativeFromTF(v tftypes.Value) (any, error) {
 // retains the user-provided identity), jsonencode attributes are re-encoded back
 // into strings, and any schema attribute absent from the response becomes null.
 //
-// This function is appropriate for Read operations where drift detection is
-// required. For Create/Update operations that need to preserve planned values,
-// use RawFromWireMerged with the plan as the base.
+// This function is used by data sources, where state is rebuilt from the API
+// response alone. Resources use RawFromWireMerged (MergeRead for Read,
+// MergeApply for Create/Update).
 func RawFromWire(schemaType tftypes.Type, wire map[string]any, extras map[string]any, spec AttrSpec) (tftypes.Value, error) {
 	obj, ok := schemaType.(tftypes.Object)
 	if !ok {
@@ -420,32 +451,67 @@ func RawFromWire(schemaType tftypes.Type, wire map[string]any, extras map[string
 	return tftypes.NewValue(obj, vals), nil
 }
 
-// RawFromWireMerged builds resource state after a create/update by overlaying the
-// API response onto the planned value. For every top-level schema attribute:
+// MergeMode selects how RawFromWireMerged arbitrates between the base value
+// (the plan on Create/Update, the prior state on Read) and the API response.
+type MergeMode int
+
+const (
+	// MergeApply is the Create/Update mode (base = req.Plan.Raw): a
+	// fully-known, non-null planned value is preserved verbatim — keeping
+	// Terraform's "planned value must equal applied value" contract for
+	// attributes the API does not echo back — EXCEPT jsonencode attributes,
+	// which are refreshed from the wire whenever the response carries the
+	// field (the server may normalize/enrich the JSON; jsontypes.Normalized
+	// semantic equality absorbs no-op re-renderings at the framework level).
+	MergeApply MergeMode = iota
+	// MergeRead is the Read/refresh mode (base = req.State.Raw): the wire
+	// value wins whenever the response carries the field, so out-of-band
+	// changes become visible to `terraform plan`. The prior state value is
+	// kept ONLY when the response omits the field or returns JSON null (the
+	// documented echo gaps: fields never returned on GET, write-only
+	// secrets, spread attributes, partial reads), or when the wire shape
+	// cannot be converted to the schema type (refresh degrades gracefully
+	// instead of failing the Read).
+	MergeRead
+)
+
+// RawFromWireMerged builds resource state by overlaying the API response onto
+// a base value (the plan on Create/Update, the prior state on Read). For every
+// top-level schema attribute:
 //
-//   - if the plan carries a KNOWN, non-null value, that value is preserved (this
+//   - identity / synthetic attributes present in extras always come from
+//     extras (path params, resolved project ids, lifecycle values derived
+//     from the response such as a feature flag's desired_state);
+//
+//   - in MergeApply mode, a KNOWN, non-null planned value is preserved (this
 //     keeps Terraform's "planned value must equal applied value" contract for
-//     Required/Optional attributes, and for Optional+Computed attributes the user
-//     set explicitly — even when the API does not echo the field back, or echoes
-//     it back enriched with server-assigned sub-fields such as a subscription id);
-//   - otherwise (plan value null or unknown, e.g. a Computed-only id or an unset
-//     Optional+Computed attribute) the value is taken from the API response, with
-//     identity / path-param values sourced from extras as in RawFromWire.
+//     Required/Optional attributes, and for Optional+Computed attributes the
+//     user set explicitly — even when the API does not echo the field back, or
+//     echoes it back enriched with server-assigned sub-fields such as a
+//     subscription id). jsonencode attributes are the exception: the wire
+//     value wins when the response carries the field;
 //
-// IMPORTANT: Read operations MUST pass a null base to enable drift detection.
-// Using prior state as the merge base disables drift detection entirely, making
-// external changes invisible to terraform plan. Only Create/Update should pass
-// the plan as the base to preserve planned values during apply.
-func RawFromWireMerged(schemaType tftypes.Type, base tftypes.Value, wire map[string]any, extras map[string]any, spec AttrSpec) (tftypes.Value, error) {
+//   - in MergeRead mode, the wire value wins whenever the response carries
+//     the field (drift detection); the prior state value is kept only when
+//     the response omits the field / returns null, or when the wire shape
+//     does not convert to the schema type;
+//
+//   - otherwise (base value null or unknown, e.g. a Computed-only id or an
+//     unset Optional+Computed attribute) the value is taken from the API
+//     response, with identity / path-param values sourced from extras as in
+//     RawFromWire, and becomes null when the response omits it.
+//
+// See the package documentation for the full read-vs-apply semantics.
+func RawFromWireMerged(schemaType tftypes.Type, mode MergeMode, base tftypes.Value, wire map[string]any, extras map[string]any, spec AttrSpec) (tftypes.Value, error) {
 	obj, ok := schemaType.(tftypes.Object)
 	if !ok {
 		return tftypes.Value{}, fmt.Errorf("schema root is not an object: %s", schemaType.String())
 	}
-	// Decode the planned object so we can read per-attribute plan values.
-	planAttrs := map[string]tftypes.Value{}
+	// Decode the base object so we can read per-attribute base values.
+	baseAttrs := map[string]tftypes.Value{}
 	if !base.IsNull() && base.IsKnown() {
-		if err := base.As(&planAttrs); err != nil {
-			return tftypes.Value{}, fmt.Errorf("decoding plan object: %w", err)
+		if err := base.As(&baseAttrs); err != nil {
+			return tftypes.Value{}, fmt.Errorf("decoding base object: %w", err)
 		}
 	}
 	vals := make(map[string]tftypes.Value, len(obj.AttributeTypes))
@@ -459,37 +525,40 @@ func RawFromWireMerged(schemaType tftypes.Type, base tftypes.Value, wire map[str
 			vals[name] = tv
 			continue
 		}
-		// Check if the wire response includes this attribute.
+		// Check if the wire response includes this attribute. A JSON null is
+		// treated as absent in BOTH modes: several endpoints return null for
+		// fields they accept but do not store per-entity, and nulling a
+		// user-set value on that signal would manufacture permanent diffs.
 		wireValue, wireHasValue := wire[spec.wireKey(name)]
 		wirePresent := wireHasValue && wireValue != nil
 
-		// Preserve a non-null planned value verbatim when it is fully known
-		// (no nested unknowns). A container attribute (object/list) whose leaves
-		// are Computed (e.g. ruleset.variants[].is_sticky / screenshot) is
+		// A base value is only usable when non-null AND fully known (no nested
+		// unknowns). A container attribute (object/list) whose leaves are
+		// Computed (e.g. ruleset.variants[].is_sticky / screenshot) is
 		// IsKnown()==true at the top even while those leaves are still unknown
-		// "(known after apply)"; preserving it verbatim would leave the unknowns
-		// in state and trip Terraform's "invalid result object after apply" check.
-		// Falling through rebuilds the attribute from the API response, which has
-		// the server-resolved values.
-		//
-		// jsonencode attributes are treated specially:
-		// 1. If the wire response includes the field, use the wire value (the API
-		//    response is authoritative and may enrich/normalize the planned JSON).
-		// 2. If the wire response does NOT include the field, preserve the plan
-		//    value (the API doesn't echo the field back, so we must preserve the
-		//    user's input to avoid clobbering it to null).
-		// This enables drift detection when the API does return the field (external
-		// changes are visible), while preserving user input when the API omits it
-		// (no permanent post-refresh diff). Semantic JSON equality is handled at
-		// the framework level via jsontypes.Normalized.
-		pv, havePlan := planAttrs[name]
-		if havePlan && !pv.IsNull() && fullyKnown(pv) {
-			isJSONEncode := spec.JSONEncodeAttrs[name]
-			// For jsonencode attrs: preserve plan ONLY when wire doesn't have it.
-			// For regular attrs: always preserve the plan.
-			if !isJSONEncode || !wirePresent {
-				vals[name] = pv
-				continue
+		// "(known after apply)"; preserving it verbatim would leave the
+		// unknowns in state and trip Terraform's "invalid result object after
+		// apply" check. Falling through rebuilds the attribute from the API
+		// response, which has the server-resolved values.
+		pv, haveBase := baseAttrs[name]
+		baseUsable := haveBase && !pv.IsNull() && fullyKnown(pv)
+		if baseUsable {
+			switch mode {
+			case MergeRead:
+				// Wire-preferred: the base (prior state) survives only when the
+				// wire omits the field.
+				if !wirePresent {
+					vals[name] = pv
+					continue
+				}
+			default: // MergeApply
+				// Plan-preferred: the planned value survives, except a
+				// jsonencode attribute the response carries (the server may
+				// normalize/enrich the JSON; the wire is authoritative there).
+				if !spec.JSONEncodeAttrs[name] || !wirePresent {
+					vals[name] = pv
+					continue
+				}
 			}
 		}
 		// Fill from the API response (null when absent).
@@ -499,6 +568,14 @@ func RawFromWireMerged(schemaType tftypes.Type, base tftypes.Value, wire map[str
 		}
 		tv, err := tfFromNative(at, wireValue, spec.JSONEncodeAttrs[name])
 		if err != nil {
+			if mode == MergeRead && baseUsable {
+				// The GET echoed a shape the schema cannot hold (e.g. a field
+				// enriched into an object where the schema has a string). Keep
+				// the prior value: drift on this attribute stays invisible, but
+				// the refresh — and every other attribute's drift — succeeds.
+				vals[name] = pv
+				continue
+			}
 			return tftypes.Value{}, fmt.Errorf("attr %q: %w", name, err)
 		}
 		vals[name] = tv

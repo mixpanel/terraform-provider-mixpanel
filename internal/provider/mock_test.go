@@ -501,6 +501,19 @@ func (m *mockServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// mutateStored applies fn to every stored object under the store lock,
+// simulating an OUT-OF-BAND edit (a webapp user changing the entity) between
+// test steps. Tests run it from a TestStep PreConfig so the step's refresh
+// observes the drifted server state; a subsequent RefreshState step with
+// ExpectNonEmptyPlan then proves the provider surfaces the drift.
+func (m *mockServer) mutateStored(fn func(id string, obj map[string]any)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, obj := range m.store {
+		fn(id, obj)
+	}
+}
+
 // idToKey renders a JSON-decoded id (number or string) as the store key, matching
 // the decimal string strconv.Itoa produced when the row was created.
 func idToKey(id any) string {

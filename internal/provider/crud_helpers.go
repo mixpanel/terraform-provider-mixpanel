@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -82,6 +83,28 @@ func requireReplace(attrs map[string]schema.Attribute, names ...string) {
 			attrs[n] = a
 		case schema.SingleNestedAttribute:
 			a.PlanModifiers = append(a.PlanModifiers, objectplanmodifier.RequiresReplace())
+			attrs[n] = a
+		}
+	}
+}
+
+// normalizedJSON upgrades the named top-level string attributes to
+// jsontypes.Normalized, the framework custom type with SEMANTIC JSON equality.
+// It is applied to every jsonencode / json-string passthrough attribute (the
+// entity's JSONEncodeAttrs + JSONStringAttrs) so that refreshing those blobs
+// from the wire can never manufacture spurious diffs: a server echo that
+// re-orders object keys, changes whitespace, or re-renders numbers compares
+// equal, which prevents both "Provider produced inconsistent result after
+// apply" (when the server echoes normalized JSON on Create/Update) and
+// perpetual plan diffs after Read refreshes the attribute. Genuinely different
+// JSON (changed values, added/removed fields, reordered ARRAYS — array order is
+// semantic) still diffs. Normalized is wire-compatible with types.String, so
+// existing states holding plain strings load unchanged. Attributes that are
+// not plain StringAttributes are left untouched.
+func normalizedJSON(attrs map[string]schema.Attribute, names ...string) {
+	for _, n := range names {
+		if a, ok := attrs[n].(schema.StringAttribute); ok {
+			a.CustomType = jsontypes.NormalizedType{}
 			attrs[n] = a
 		}
 	}

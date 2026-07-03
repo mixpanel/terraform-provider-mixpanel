@@ -47,6 +47,7 @@ func (r *DataGovernanceSettingsResource) Schema(ctx context.Context, req resourc
 	s.Attributes["id"] = schema.StringAttribute{Computed: true}
 	s.Attributes["data_standards"] = schema.StringAttribute{Optional: true, Computed: true}
 	requireReplace(s.Attributes, "project_id")
+	normalizedJSON(s.Attributes, "data_standards")
 	stabilizeComputed(s.Attributes)
 	resp.Schema = s
 }
@@ -113,7 +114,7 @@ func (r *DataGovernanceSettingsResource) Create(ctx context.Context, req resourc
 	}
 	wire = wrapSingleton(wire, "data_standards")
 	// synthetic id = project id (a project singleton has one settings object).
-	r.writeDataGovernanceSettingsState(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, projectID)
+	r.writeDataGovernanceSettingsState(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, projectID)
 }
 
 func (r *DataGovernanceSettingsResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -138,7 +139,7 @@ func (r *DataGovernanceSettingsResource) Read(ctx context.Context, req resource.
 	}
 	wire = wrapSingleton(wire, "data_standards")
 	// synthetic id = project id (a project singleton has one settings object).
-	r.writeDataGovernanceSettingsState(ctx, &resp.State, &resp.Diagnostics, req.State.Raw, wire, projectID, projectID)
+	r.writeDataGovernanceSettingsState(ctx, &resp.State, &resp.Diagnostics, client.MergeRead, req.State.Raw, wire, projectID, projectID)
 }
 
 func (r *DataGovernanceSettingsResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -168,7 +169,7 @@ func (r *DataGovernanceSettingsResource) Update(ctx context.Context, req resourc
 		return
 	}
 	wire = wrapSingleton(wire, "data_standards")
-	r.writeDataGovernanceSettingsState(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, projectID)
+	r.writeDataGovernanceSettingsState(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, projectID)
 }
 
 func (r *DataGovernanceSettingsResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -191,11 +192,12 @@ func (r *DataGovernanceSettingsResource) ImportState(ctx context.Context, req re
 	setImportID(ctx, &resp.State, &resp.Diagnostics, "id", req.ID, "string")
 }
 
-// writeDataGovernanceSettingsState turns an unwrapped API body into resource state. base is the
-// planned raw value (req.Plan.Raw) on create/update so config-supplied values are
-// preserved verbatim, or a null tftypes.Value on read (state is rebuilt from the
-// API response alone). See client.RawFromWireMerged for the merge semantics.
-func (r *DataGovernanceSettingsResource) writeDataGovernanceSettingsState(ctx context.Context, state *tfsdk.State, diags *diagAppender, base tftypes.Value, wire map[string]any, projectID, id string) {
+// writeDataGovernanceSettingsState turns an unwrapped API body into resource state. On
+// create/update (client.MergeApply, base = req.Plan.Raw) config-supplied values
+// are preserved verbatim; on read (client.MergeRead, base = req.State.Raw) the
+// API response wins wherever it carries a field, so drift is refreshed into
+// state. See client.RawFromWireMerged for the exact merge semantics.
+func (r *DataGovernanceSettingsResource) writeDataGovernanceSettingsState(ctx context.Context, state *tfsdk.State, diags *diagAppender, mode client.MergeMode, base tftypes.Value, wire map[string]any, projectID, id string) {
 	extras := map[string]any{
 		"id": id,
 	}
@@ -203,7 +205,7 @@ func (r *DataGovernanceSettingsResource) writeDataGovernanceSettingsState(ctx co
 		extras["project_id"] = projectID
 	}
 	schemaType := state.Schema.Type().TerraformType(ctx)
-	val, err := client.RawFromWireMerged(schemaType, base, wire, extras, DataGovernanceSettingsAttrSpec())
+	val, err := client.RawFromWireMerged(schemaType, mode, base, wire, extras, DataGovernanceSettingsAttrSpec())
 	if err != nil {
 		diags.AddError("Building data_governance_settings state", err.Error())
 		return

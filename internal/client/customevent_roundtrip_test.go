@@ -58,7 +58,7 @@ func TestCustomEventRoundTrip(t *testing.T) {
 		JSONEncodeWireKey: map[string]string{"custom_event": "custom_event"},
 	}
 
-	out, err := RawFromWireMerged(schemaType, plan, wire, extras, spec)
+	out, err := RawFromWireMerged(schemaType, MergeApply, plan, wire, extras, spec)
 	if err != nil {
 		t.Fatalf("RawFromWireMerged: %v", err)
 	}

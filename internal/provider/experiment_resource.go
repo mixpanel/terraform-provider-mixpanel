@@ -116,6 +116,7 @@ func (r *ExperimentResource) Schema(ctx context.Context, req resource.SchemaRequ
 			"recorded). Changing it while `desired_state` is `concluded` re-issues the decide call.",
 	}
 	s.Attributes[shareAttrName] = shareWithProjectAttribute()
+	normalizedJSON(s.Attributes, "exposures_cache", "feature_flag", "results_cache", "settings")
 	stabilizeComputed(s.Attributes)
 	resp.Schema = s
 }
@@ -360,7 +361,7 @@ func (r *ExperimentResource) Create(ctx context.Context, req resource.CreateRequ
 			return
 		}
 	}
-	r.writeExperimentState(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, id)
+	r.writeExperimentState(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, id)
 	finishShareOnCreate(ctx, r.client, &resp.State, &resp.Diagnostics, req.Plan.Raw, projectID, sharedEntityTypeExperiment, id)
 }
 
@@ -398,15 +399,14 @@ func (r *ExperimentResource) Read(ctx context.Context, req resource.ReadRequest,
 		resp.Diagnostics.AddError("Decoding experiment response", err.Error())
 		return
 	}
-	// Use the prior state as the merge base so attributes the user manages but
-	// the API does not faithfully echo back on a GET (fields it never returns, or
-	// returns enriched with server-assigned sub-keys such as a subscription id)
-	// are preserved instead of being clobbered to null / a server-mangled shape,
-	// which would otherwise produce a permanent post-refresh diff. Computed-only
-	// values (absent from prior state) are still refreshed from the API response.
+	// Wire-preferred refresh (client.MergeRead): the API response wins for every
+	// attribute it carries, so out-of-band edits become visible to `terraform
+	// plan` as drift. The prior state is the merge base only for attributes the
+	// GET omits (fields the API never echoes back, write-only secrets, spread
+	// attributes) — those are preserved instead of being clobbered to null.
 	// Lifecycle attributes (desired_state / status / deleted) are always sourced
 	// from the response via extras so lifecycle drift stays visible.
-	r.writeExperimentState(ctx, &resp.State, &resp.Diagnostics, req.State.Raw, wire, projectID, id)
+	r.writeExperimentState(ctx, &resp.State, &resp.Diagnostics, client.MergeRead, req.State.Raw, wire, projectID, id)
 	refreshShareOnRead(ctx, r.client, &resp.State, &resp.Diagnostics, projectID, sharedEntityTypeExperiment, id)
 }
 
@@ -471,7 +471,7 @@ func (r *ExperimentResource) Update(ctx context.Context, req resource.UpdateRequ
 			return
 		}
 	}
-	r.writeExperimentState(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, id)
+	r.writeExperimentState(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, id)
 	finishShareOnUpdate(ctx, r.client, &resp.State, &resp.Diagnostics, req.Plan.Raw, req.State.Raw, projectID, sharedEntityTypeExperiment, id)
 }
 
@@ -516,7 +516,7 @@ func (r *ExperimentResource) ImportState(ctx context.Context, req resource.Impor
 // preserved verbatim, or the prior state on read. See client.RawFromWireMerged for
 // the merge semantics. The lifecycle attributes (desired_state, status, deleted)
 // are always sourced from the API body via extras so lifecycle drift is visible.
-func (r *ExperimentResource) writeExperimentState(ctx context.Context, state *tfsdk.State, diags *diagAppender, base tftypes.Value, wire map[string]any, projectID, id string) {
+func (r *ExperimentResource) writeExperimentState(ctx context.Context, state *tfsdk.State, diags *diagAppender, mode client.MergeMode, base tftypes.Value, wire map[string]any, projectID, id string) {
 	extras := map[string]any{
 		"id": id,
 	}
@@ -532,7 +532,7 @@ func (r *ExperimentResource) writeExperimentState(ctx context.Context, state *tf
 	}
 	extras["deleted"] = wire["deleted"]
 	schemaType := state.Schema.Type().TerraformType(ctx)
-	val, err := client.RawFromWireMerged(schemaType, base, wire, extras, ExperimentAttrSpec())
+	val, err := client.RawFromWireMerged(schemaType, mode, base, wire, extras, ExperimentAttrSpec())
 	if err != nil {
 		diags.AddError("Building experiment state", err.Error())
 		return

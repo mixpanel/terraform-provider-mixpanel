@@ -50,6 +50,7 @@ func (r *AnnotationResource) Metadata(ctx context.Context, req resource.Metadata
 func (r *AnnotationResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	s := rsc.AnnotationResourceSchema(ctx)
 	s.Attributes["user"] = schema.StringAttribute{Optional: true, Computed: true}
+	normalizedJSON(s.Attributes, "user")
 	stabilizeComputed(s.Attributes)
 	resp.Schema = s
 }
@@ -110,7 +111,7 @@ func (r *AnnotationResource) Create(ctx context.Context, req resource.CreateRequ
 		return
 	}
 	id := idForAnnotation(wire)
-	r.writeAnnotationState(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, id)
+	r.writeAnnotationState(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, id)
 }
 
 func (r *AnnotationResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -138,13 +139,12 @@ func (r *AnnotationResource) Read(ctx context.Context, req resource.ReadRequest,
 		resp.Diagnostics.AddError("Decoding annotation response", err.Error())
 		return
 	}
-	// Use the prior state as the merge base so attributes the user manages but
-	// the API does not faithfully echo back on a GET (fields it never returns, or
-	// returns enriched with server-assigned sub-keys such as a subscription id)
-	// are preserved instead of being clobbered to null / a server-mangled shape,
-	// which would otherwise produce a permanent post-refresh diff. Computed-only
-	// values (absent from prior state) are still refreshed from the API response.
-	r.writeAnnotationState(ctx, &resp.State, &resp.Diagnostics, req.State.Raw, wire, projectID, id)
+	// Wire-preferred refresh (client.MergeRead): the API response wins for every
+	// attribute it carries, so out-of-band edits become visible to `terraform
+	// plan` as drift. The prior state is the merge base only for attributes the
+	// GET omits (fields the API never echoes back, write-only secrets, spread
+	// attributes) — those are preserved instead of being clobbered to null.
+	r.writeAnnotationState(ctx, &resp.State, &resp.Diagnostics, client.MergeRead, req.State.Raw, wire, projectID, id)
 }
 
 func (r *AnnotationResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -174,7 +174,7 @@ func (r *AnnotationResource) Update(ctx context.Context, req resource.UpdateRequ
 		resp.Diagnostics.AddError("Decoding annotation response", err.Error())
 		return
 	}
-	r.writeAnnotationState(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, id)
+	r.writeAnnotationState(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, id)
 }
 
 func (r *AnnotationResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -211,11 +211,12 @@ func (r *AnnotationResource) ImportState(ctx context.Context, req resource.Impor
 	setImportID(ctx, &resp.State, &resp.Diagnostics, "id", parts[1], "int64")
 }
 
-// writeAnnotationState turns an unwrapped API body into resource state. base is the
-// planned raw value (req.Plan.Raw) on create/update so config-supplied values are
-// preserved verbatim, or a null tftypes.Value on read (state is rebuilt from the
-// API response alone). See client.RawFromWireMerged for the merge semantics.
-func (r *AnnotationResource) writeAnnotationState(ctx context.Context, state *tfsdk.State, diags *diagAppender, base tftypes.Value, wire map[string]any, projectID, id string) {
+// writeAnnotationState turns an unwrapped API body into resource state. On
+// create/update (client.MergeApply, base = req.Plan.Raw) config-supplied values
+// are preserved verbatim; on read (client.MergeRead, base = req.State.Raw) the
+// API response wins wherever it carries a field, so drift is refreshed into
+// state. See client.RawFromWireMerged for the exact merge semantics.
+func (r *AnnotationResource) writeAnnotationState(ctx context.Context, state *tfsdk.State, diags *diagAppender, mode client.MergeMode, base tftypes.Value, wire map[string]any, projectID, id string) {
 	extras := map[string]any{
 		"id": id,
 	}
@@ -224,7 +225,7 @@ func (r *AnnotationResource) writeAnnotationState(ctx context.Context, state *tf
 	}
 	extras["annotation_id"] = id
 	schemaType := state.Schema.Type().TerraformType(ctx)
-	val, err := client.RawFromWireMerged(schemaType, base, wire, extras, AnnotationAttrSpec())
+	val, err := client.RawFromWireMerged(schemaType, mode, base, wire, extras, AnnotationAttrSpec())
 	if err != nil {
 		diags.AddError("Building annotation state", err.Error())
 		return

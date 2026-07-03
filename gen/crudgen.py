@@ -14,7 +14,15 @@ Design (see internal/client/tfjson.go for the bridge):
   * Schema  = the generated <Entity>ResourceSchema(ctx), with top-level
     jsonencode_fields injected as Optional+Computed types.String attributes
     (they were dropped during framework generation because they are dynamic /
-    oneOf). The id identity attribute is forced Computed.
+    oneOf). Every jsonencode / json-string attribute is then upgraded to
+    jsontypes.Normalized via the normalizedJSON helper (SEMANTIC JSON
+    equality, so wire echoes that re-render the JSON are not diffs). The id
+    identity attribute is forced Computed.
+  * Refresh = state writers take a client.MergeMode: Create/Update pass
+    client.MergeApply (plan-preferred; the planned value is kept when the API
+    omits a field) and Read passes client.MergeRead (wire-preferred; the GET
+    response wins wherever it carries a field, so out-of-band edits surface
+    as drift). See client.RawFromWireMerged.
   * Model   = handled at the tftypes.Value level (req.Plan.Raw / req.State.Raw)
     rather than via the typed <Entity>Model, because the injected jsonencode
     attributes are not present on the generated struct. This keeps a single,
@@ -1611,17 +1619,18 @@ func (r *{cls}Resource) ImportState(ctx context.Context, req resource.ImportStat
 {import_state_body}
 }}
 
-// write{cls}State turns an unwrapped API body into resource state. base is the
-// planned raw value (req.Plan.Raw) on create/update so config-supplied values are
-// preserved verbatim, or a null tftypes.Value on read (state is rebuilt from the
-// API response alone). See client.RawFromWireMerged for the merge semantics.
-func (r *{cls}Resource) write{cls}State(ctx context.Context, state *tfsdk.State, diags *diagAppender, base tftypes.Value, wire map[string]any, projectID, id string) {{
+// write{cls}State turns an unwrapped API body into resource state. On
+// create/update (client.MergeApply, base = req.Plan.Raw) config-supplied values
+// are preserved verbatim; on read (client.MergeRead, base = req.State.Raw) the
+// API response wins wherever it carries a field, so drift is refreshed into
+// state. See client.RawFromWireMerged for the exact merge semantics.
+func (r *{cls}Resource) write{cls}State(ctx context.Context, state *tfsdk.State, diags *diagAppender, mode client.MergeMode, base tftypes.Value, wire map[string]any, projectID, id string) {{
 	extras := map[string]any{{
 		"{identity_attr}": id,
 	}}
 {extras_project}
 	schemaType := state.Schema.Type().TerraformType(ctx)
-	val, err := client.RawFromWireMerged(schemaType, base, wire, extras, {cls}AttrSpec())
+	val, err := client.RawFromWireMerged(schemaType, mode, base, wire, extras, {cls}AttrSpec())
 	if err != nil {{
 		diags.AddError("Building {entity} state", err.Error())
 		return
@@ -1675,7 +1684,7 @@ CREATE_COLLECTION = """	spec := {cls}AttrSpec()
 		return
 	}}
 	id := idFor{cls}(wire)
-	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, id)"""
+	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, id)"""
 
 
 # Client-id UPSERT Create: the identity is supplied by the configuration and the
@@ -1717,7 +1726,7 @@ CREATE_INSTANCE_UPSERT = """	spec := {cls}AttrSpec()
 	if rid := idFor{cls}(wire); rid != "" {{
 		id = rid
 	}}
-	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, id)"""
+	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, id)"""
 
 
 # Read-after-create: POST to the collection, but the create response is a FLAT
@@ -1764,7 +1773,7 @@ CREATE_READ_AFTER = """	spec := {cls}AttrSpec()
 		resp.Diagnostics.AddError("Decoding {entity} response", err.Error())
 		return
 	}}
-	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, id)"""
+	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, id)"""
 
 
 UPDATE_PUT_PATCH = """	spec := {cls}AttrSpec()
@@ -1793,7 +1802,7 @@ UPDATE_PUT_PATCH = """	spec := {cls}AttrSpec()
 		resp.Diagnostics.AddError("Decoding {entity} response", err.Error())
 		return
 	}}
-	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, id)"""
+	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, id)"""
 
 
 UPDATE_FORCENEW = """	// {entity} has no update operation in the API (create/read/delete only). Every
@@ -1834,13 +1843,12 @@ READ_INSTANCE = """	projectID, err := r.projectID(ctx, req.State.Raw)
 		resp.Diagnostics.AddError("Decoding {entity} response", err.Error())
 		return
 	}}
-	// Use the prior state as the merge base so attributes the user manages but
-	// the API does not faithfully echo back on a GET (fields it never returns, or
-	// returns enriched with server-assigned sub-keys such as a subscription id)
-	// are preserved instead of being clobbered to null / a server-mangled shape,
-	// which would otherwise produce a permanent post-refresh diff. Computed-only
-	// values (absent from prior state) are still refreshed from the API response.
-	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, req.State.Raw, wire, projectID, id)"""
+	// Wire-preferred refresh (client.MergeRead): the API response wins for every
+	// attribute it carries, so out-of-band edits become visible to `terraform
+	// plan` as drift. The prior state is the merge base only for attributes the
+	// GET omits (fields the API never echoes back, write-only secrets, spread
+	// attributes) — those are preserved instead of being clobbered to null.
+	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, client.MergeRead, req.State.Raw, wire, projectID, id)"""
 
 
 # Read-from-list: the entity has no instance GET. GET the collection, unwrap the
@@ -1874,9 +1882,10 @@ READ_FROM_LIST = """	projectID, err := r.projectID(ctx, req.State.Raw)
 		resp.State.RemoveResource(ctx)
 		return
 	}}
-	// Merge against prior state: the list item may omit user-managed fields the
-	// API never echoes back; preserve those instead of clobbering to null.
-	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, req.State.Raw, wire, projectID, id)"""
+	// Wire-preferred refresh (client.MergeRead): the list item wins for every
+	// field it carries (drift detection); prior state fills only the fields the
+	// listing omits (fields the API never echoes back are preserved, not nulled).
+	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, client.MergeRead, req.State.Raw, wire, projectID, id)"""
 
 
 # Default Delete: DELETE the instance path. DELETE may return a JSON body
@@ -1943,7 +1952,7 @@ CREATE_COLLECTION_BODY_ID = """	spec := {cls}AttrSpec()
 		resp.Diagnostics.AddError("Creating {entity}", "create response did not contain the new filter (no element matching {match_attr})")
 		return
 	}}
-	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, id)"""
+	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, id)"""
 
 
 # Update: PATCH the collection with the id injected into the body. The response is
@@ -1980,7 +1989,7 @@ UPDATE_COLLECTION_BODY_ID = """	spec := {cls}AttrSpec()
 		resp.Diagnostics.AddError("Updating {entity}", "updated filter not found in response")
 		return
 	}}
-	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, id)"""
+	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, id)"""
 
 
 # Delete: DELETE the collection with {"id": <id>} as the body.
@@ -2040,7 +2049,7 @@ CREATE_SINGLETON = """	spec := {cls}AttrSpec()
 	}}
 	wire = wrapSingleton(wire, "{read_wrap_key}")
 	// synthetic id = project id (a project singleton has one settings object).
-	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, projectID)"""
+	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, projectID)"""
 
 
 UPDATE_SINGLETON = """	spec := {cls}AttrSpec()
@@ -2069,7 +2078,7 @@ UPDATE_SINGLETON = """	spec := {cls}AttrSpec()
 		return
 	}}
 	wire = wrapSingleton(wire, "{read_wrap_key}")
-	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, projectID)"""
+	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, projectID)"""
 
 
 READ_SINGLETON = """	projectID, err := r.projectID(ctx, req.State.Raw)
@@ -2093,7 +2102,7 @@ READ_SINGLETON = """	projectID, err := r.projectID(ctx, req.State.Raw)
 	}}
 	wire = wrapSingleton(wire, "{read_wrap_key}")
 	// synthetic id = project id (a project singleton has one settings object).
-	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, req.State.Raw, wire, projectID, projectID)"""
+	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, client.MergeRead, req.State.Raw, wire, projectID, projectID)"""
 
 
 # Singleton Delete: a project-global settings object cannot be deleted. Destroy
@@ -2155,7 +2164,7 @@ CREATE_RPC_LIFECYCLE = """	projectID, err := r.projectID(ctx, req.Plan.Raw)
 		resp.Diagnostics.AddError("Creating {entity}", "create response did not contain the new {entity} (no element matching {match_attr})")
 		return
 	}}
-	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, id)"""
+	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, id)"""
 
 
 # Delete: POST {id_list_key: [<id>]} to the delete RPC path. A 404 is treated as
@@ -2226,7 +2235,7 @@ CREATE_SETTINGS_SINGLETON = """	spec := {cls}AttrSpec()
 		return
 	}}
 	wire = wrapSingleton(wire, "{read_wrap_key}")
-	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, scopeID, scopeID)"""
+	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, scopeID, scopeID)"""
 
 
 UPDATE_SETTINGS_SINGLETON = """	spec := {cls}AttrSpec()
@@ -2260,7 +2269,7 @@ UPDATE_SETTINGS_SINGLETON = """	spec := {cls}AttrSpec()
 		return
 	}}
 	wire = wrapSingleton(wire, "{read_wrap_key}")
-	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, scopeID, scopeID)"""
+	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, scopeID, scopeID)"""
 
 
 # ---------------------------------------------------------------------------
@@ -2627,6 +2636,20 @@ def inject_schema_lines(ent, attr_kind, force_new_attrs=None):
         if force_new_attrs:
             names = ", ".join('"%s"' % n for n in force_new_attrs)
             lines.append("\trequireReplace(s.Attributes, %s)" % names)
+        # Upgrade every jsonencode / json-string passthrough attribute to
+        # jsontypes.Normalized (SEMANTIC JSON equality) via the normalizedJSON
+        # helper. This covers both the injected passthroughs above and blob
+        # attributes that already exist as plain strings in the generated
+        # schema package (e.g. formula.definition, the settings singletons,
+        # warehouse_source.params) without touching the _gen.go files. Without
+        # semantic equality, refreshing a blob from the wire risks "Provider
+        # produced inconsistent result after apply" (server echoes normalized
+        # JSON on create/update) and perpetual diffs from key-order/whitespace
+        # churn on Read. Resource schemas only: data sources never diff.
+        blob_attrs = sorted(set(ent["top_jsonencode"]) | set(ent["top_jsonstring"]))
+        if blob_attrs:
+            names = ", ".join('"%s"' % n for n in blob_attrs)
+            lines.append("\tnormalizedJSON(s.Attributes, %s)" % names)
         # Stabilize every Computed attribute with UseStateForUnknown so a
         # server-populated value already in state is preserved across plans
         # instead of being re-marked "(known after apply)". Without this, a
@@ -3758,6 +3781,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -3826,6 +3850,28 @@ func requireReplace(attrs map[string]schema.Attribute, names ...string) {
 			attrs[n] = a
 		case schema.SingleNestedAttribute:
 			a.PlanModifiers = append(a.PlanModifiers, objectplanmodifier.RequiresReplace())
+			attrs[n] = a
+		}
+	}
+}
+
+// normalizedJSON upgrades the named top-level string attributes to
+// jsontypes.Normalized, the framework custom type with SEMANTIC JSON equality.
+// It is applied to every jsonencode / json-string passthrough attribute (the
+// entity's JSONEncodeAttrs + JSONStringAttrs) so that refreshing those blobs
+// from the wire can never manufacture spurious diffs: a server echo that
+// re-orders object keys, changes whitespace, or re-renders numbers compares
+// equal, which prevents both "Provider produced inconsistent result after
+// apply" (when the server echoes normalized JSON on Create/Update) and
+// perpetual plan diffs after Read refreshes the attribute. Genuinely different
+// JSON (changed values, added/removed fields, reordered ARRAYS — array order is
+// semantic) still diffs. Normalized is wire-compatible with types.String, so
+// existing states holding plain strings load unchanged. Attributes that are
+// not plain StringAttributes are left untouched.
+func normalizedJSON(attrs map[string]schema.Attribute, names ...string) {
+	for _, n := range names {
+		if a, ok := attrs[n].(schema.StringAttribute); ok {
+			a.CustomType = jsontypes.NormalizedType{}
 			attrs[n] = a
 		}
 	}
