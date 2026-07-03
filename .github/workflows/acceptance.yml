@@ -50,13 +50,19 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: '1.23'
+          go-version-file: "go.mod"
           cache: true
+
+      - name: Set up OpenTofu
+        uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1
+        with:
+          tofu_version: "1.12.2"
+          tofu_wrapper: false
 
       - name: Download dependencies
         run: go mod download
@@ -69,18 +75,12 @@ jobs:
           MIXPANEL_TEST_PROJECT_POOL: ${{ secrets.MIXPANEL_TEST_PROJECT_POOL }}
           MIXPANEL_ORGANIZATION_ID: ${{ secrets.MIXPANEL_ORGANIZATION_ID }}
           MIXPANEL_BASE_URL: ${{ secrets.MIXPANEL_BASE_URL || 'https://mixpanel.com' }}
+          TF_ACC_PROVIDER_HOST: registry.opentofu.org
+          TF_ACC_PROVIDER_NAMESPACE: hashicorp
         run: |
+          export TF_ACC_TERRAFORM_PATH="$(command -v tofu)"
           PATTERN="${{ github.event.inputs.resources || matrix.test-suite.pattern }}"
           go test -v -timeout 30m ./internal/provider -run "$PATTERN"
-
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results-${{ matrix.test-suite.name }}
-          path: |
-            internal/provider/*.log
-          retention-days: 7
 
   # Smoke test that runs a subset of tests on every PR
   smoke-test:
@@ -91,13 +91,19 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: '1.23'
+          go-version-file: "go.mod"
           cache: true
+
+      - name: Set up OpenTofu
+        uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1
+        with:
+          tofu_version: "1.12.2"
+          tofu_wrapper: false
 
       - name: Download dependencies
         run: go mod download
@@ -109,7 +115,10 @@ jobs:
           MIXPANEL_SERVICE_ACCOUNT_SECRET: ${{ secrets.MIXPANEL_SERVICE_ACCOUNT_SECRET }}
           MIXPANEL_PROJECT_ID: ${{ secrets.MIXPANEL_TEST_PROJECT_POOL }}
           MIXPANEL_ORGANIZATION_ID: ${{ secrets.MIXPANEL_ORGANIZATION_ID }}
+          TF_ACC_PROVIDER_HOST: registry.opentofu.org
+          TF_ACC_PROVIDER_NAMESPACE: hashicorp
         run: |
+          export TF_ACC_TERRAFORM_PATH="$(command -v tofu)"
           # Run just the basic tests for quick feedback
           go test -v -timeout 10m ./internal/provider -run 'TestAccCohort_basic|TestAccDashboard_basic|TestAccMetric_basic'
 
@@ -122,13 +131,19 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: '1.23'
+          go-version-file: "go.mod"
           cache: true
+
+      - name: Set up OpenTofu
+        uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1
+        with:
+          tofu_version: "1.12.2"
+          tofu_wrapper: false
 
       - name: Download dependencies
         run: go mod download
@@ -140,21 +155,9 @@ jobs:
           MIXPANEL_SERVICE_ACCOUNT_SECRET: ${{ secrets.MIXPANEL_SERVICE_ACCOUNT_SECRET }}
           MIXPANEL_TEST_PROJECT_POOL: ${{ secrets.MIXPANEL_TEST_PROJECT_POOL }}
           MIXPANEL_ORGANIZATION_ID: ${{ secrets.MIXPANEL_ORGANIZATION_ID }}
+          TF_ACC_PROVIDER_HOST: registry.opentofu.org
+          TF_ACC_PROVIDER_NAMESPACE: hashicorp
         run: |
+          export TF_ACC_TERRAFORM_PATH="$(command -v tofu)"
           go test -v -timeout 60m -parallel 4 ./internal/provider -run TestAcc
 
-      - name: Generate test report
-        if: always()
-        run: |
-          echo "# Acceptance Test Results" > test-report.md
-          echo "Branch: ${{ github.ref }}" >> test-report.md
-          echo "Commit: ${{ github.sha }}" >> test-report.md
-          echo "Time: $(date)" >> test-report.md
-
-      - name: Upload test report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: full-test-report
-          path: test-report.md
-          retention-days: 30
