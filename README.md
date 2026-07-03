@@ -33,6 +33,23 @@ Any provider attribute may be supplied via its corresponding environment variabl
 **Never commit credentials** — use environment variables, a Terraform variable, or a secrets
 manager.
 
+## Regions
+
+The provider talks to `https://mixpanel.com` by default. For projects hosted in
+the EU or India residency regions, set `base_url` (or `MIXPANEL_BASE_URL`) to
+the regional API host:
+
+```hcl
+provider "mixpanel" {
+  base_url = "https://eu.mixpanel.com" # or "https://in.mixpanel.com"
+}
+```
+
+> **Heads-up:** credentials pointed at the **wrong region** fail with a
+> **500-series error, not a 401**. If every request errors with a 500 and your
+> service account secret is definitely correct, check that `base_url` matches
+> the region your project lives in before debugging anything else.
+
 ## Example
 
 ```hcl
@@ -90,6 +107,14 @@ These JSON string attributes use semantic JSON equality
 (`jsontypes.Normalized`): key order, whitespace, and number-rendering
 differences between your configuration and the server's echo are never
 reported as diffs, while real changes are.
+
+The analytics-entity blobs (cohort `groups`, behavior/metric/formula
+`definition`, bookmark `params`) are additionally validated at `terraform
+plan` time: definition shapes that the API accepts with a 200 but that corrupt
+the Mixpanel webapp query builder are rejected as plan errors, and server-side
+limits (100 funnel steps — the ARB merger cap; 60 retention intervals) are
+enforced or warned about before anything is sent. See the per-resource docs
+for the exact rules.
 
 ## Drift detection
 

@@ -5,6 +5,10 @@
 // project share via the shared-entities API and Read refreshes it. Entities a
 // service account creates are otherwise invisible to human users. Re-apply
 // these edits if regenerating this file.
+//
+// HAND-EDITED EXCEPTION 2: plan-time params validation
+// (ValidateConfig, see analytics_validate.go for the rule table and citations).
+// Re-apply if regenerating.
 
 package provider
 
@@ -12,6 +16,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/hashicorp/terraform-plugin-framework/path"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -24,9 +30,10 @@ import (
 )
 
 var (
-	_ resource.Resource                = (*BookmarkResource)(nil)
-	_ resource.ResourceWithConfigure   = (*BookmarkResource)(nil)
-	_ resource.ResourceWithImportState = (*BookmarkResource)(nil)
+	_ resource.Resource                   = (*BookmarkResource)(nil)
+	_ resource.ResourceWithConfigure      = (*BookmarkResource)(nil)
+	_ resource.ResourceWithImportState    = (*BookmarkResource)(nil)
+	_ resource.ResourceWithValidateConfig = (*BookmarkResource)(nil)
 )
 
 // keep the generated schema package and schema builder imported.
@@ -89,6 +96,24 @@ func (r *BookmarkResource) collectionPath(projectID string) string {
 
 func (r *BookmarkResource) instancePath(projectID, id string) string {
 	return strings.NewReplacer("{project_id}", projectID, "{bookmark_id}", id).Replace("/api/app/projects/{project_id}/bookmarks/{bookmark_id}")
+}
+
+// ValidateConfig rejects the confirmed webapp-corrupting bookmark params
+// shapes at plan time (see analytics_validate.go). The bookmark's `type`
+// attribute scopes the funnel-steps rules; when it is unknown/null the
+// type-specific rules are skipped.
+func (r *BookmarkResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var bmType types.String
+	if d := req.Config.GetAttribute(ctx, path.Root("type"), &bmType); d.HasError() {
+		bmType = types.StringNull()
+	}
+	typeStr := ""
+	if !bmType.IsNull() && !bmType.IsUnknown() {
+		typeStr = bmType.ValueString()
+	}
+	validatedJSONAttr(ctx, req.Config, "params", &resp.Diagnostics, func(v any) []string {
+		return validateBookmarkParams(v, typeStr)
+	})
 }
 
 func (r *BookmarkResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {

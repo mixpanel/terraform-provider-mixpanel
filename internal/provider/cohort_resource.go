@@ -5,6 +5,10 @@
 // project share via the shared-entities API and Read refreshes it. Entities a
 // service account creates are otherwise invisible to human users. Re-apply
 // these edits if regenerating this file.
+//
+// HAND-EDITED EXCEPTION 2: plan-time `groups` validation (ValidateConfig, see
+// analytics_validate.go) and actionable duplicate-name 409 handling in Create
+// (see cohortCreate409Error). Re-apply if regenerating.
 
 package provider
 
@@ -24,9 +28,10 @@ import (
 )
 
 var (
-	_ resource.Resource                = (*CohortResource)(nil)
-	_ resource.ResourceWithConfigure   = (*CohortResource)(nil)
-	_ resource.ResourceWithImportState = (*CohortResource)(nil)
+	_ resource.Resource                   = (*CohortResource)(nil)
+	_ resource.ResourceWithConfigure      = (*CohortResource)(nil)
+	_ resource.ResourceWithImportState    = (*CohortResource)(nil)
+	_ resource.ResourceWithValidateConfig = (*CohortResource)(nil)
 )
 
 // keep the generated schema package and schema builder imported.
@@ -90,6 +95,12 @@ func (r *CohortResource) instancePath(projectID, id string) string {
 	return strings.NewReplacer("{project_id}", projectID, "{cohort_id}", id).Replace("/api/app/projects/{project_id}/cohorts/{cohort_id}")
 }
 
+// ValidateConfig rejects the confirmed webapp-corrupting `groups` shapes at
+// plan time (see analytics_validate.go for the rule table and citations).
+func (r *CohortResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	validatedJSONAttr(ctx, req.Config, "groups", &resp.Diagnostics, validateCohortGroups)
+}
+
 func (r *CohortResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	spec := CohortAttrSpec()
 	projectID, err := r.projectID(ctx, req.Plan.Raw)
@@ -104,6 +115,10 @@ func (r *CohortResource) Create(ctx context.Context, req resource.CreateRequest,
 	}
 	respBody, err := r.client.Do(ctx, "POST", r.collectionPath(projectID), body)
 	if err != nil {
+		if apiErr, ok := err.(*client.APIError); ok && apiErr.StatusCode == 409 {
+			resp.Diagnostics.AddError("Creating cohort", r.cohortCreate409Error(ctx, projectID, req.Plan.Raw, apiErr))
+			return
+		}
 		resp.Diagnostics.AddError("Creating cohort", err.Error())
 		return
 	}
@@ -247,6 +262,45 @@ func idForCohort(wire map[string]any) string {
 		return v
 	}
 	return ""
+}
+
+// cohortCreate409Error turns the duplicate-name 409 from cohort create into an
+// actionable message.
+//
+// Live-verified semantics (localhost dev server, project 3, 2026-07-02):
+//   - Cohort name uniqueness is enforced per (project, workspace, name) among
+//     ACTIVE cohorts only (MySQL unique index over a nullable `active` column;
+//     see analytics engage/models.py Cohort). Soft-deleted cohorts have
+//     active=NULL, so destroy-then-recreate of the same name succeeds (200) —
+//     a soft-deleted cohort NEVER causes this 409.
+//   - The 409 ('Cohort with name "X" already exists.',
+//     webapp/app_api/projects/cohorts/utils.py create_cohort IntegrityError
+//     branch) therefore always means a LIVE cohort with this name exists —
+//     created in the webapp, by another workspace/state, or left behind by an
+//     interrupted apply. Silently adopting it would hijack an entity Terraform
+//     does not own, so the provider reports it (with the conflicting id when it
+//     can be resolved) instead of auto-recovering.
+//   - A soft-deleted cohort CAN be restored out-of-band via
+//     PATCH .../cohorts/{id} with {"deleted": false} (SA-accessible,
+//     live-verified; webapp/app_api/projects/cohorts/views.py cohorts_entry
+//     loads deleted rows when the body carries deleted=false) — but the restore
+//     itself 409s while a live duplicate name exists.
+func (r *CohortResource) cohortCreate409Error(ctx context.Context, projectID string, planRaw tftypes.Value, apiErr *client.APIError) string {
+	name, _ := stringAttrFromRaw(planRaw, "name")
+	msg := fmt.Sprintf("the Mixpanel API returned 409: %s\n\n", apiErr.Body)
+	msg += fmt.Sprintf("A LIVE cohort named %q already exists in project %s (cohort names are unique among active cohorts; soft-deleted cohorts do not conflict — destroy-then-recreate of the same name works).", name, projectID)
+	// Best effort: resolve the conflicting live cohort's id so it can be imported.
+	if name != "" {
+		if listBody, lerr := r.client.Do(ctx, "GET", r.collectionPath(projectID), nil); lerr == nil {
+			if obj, found, ferr := findInList(listBody, true, "name", name); ferr == nil && found {
+				if id, ok := nestedID(obj, "id"); ok && id != "" {
+					msg += fmt.Sprintf("\n\nThe conflicting cohort has id %s. To manage it with Terraform instead, import it:\n  terraform import <address> %s:%s", id, projectID, id)
+				}
+			}
+		}
+	}
+	msg += "\n\nOtherwise choose a different name, or delete the existing cohort in the Mixpanel webapp first."
+	return msg
 }
 
 // unwrapCohort unwraps the API envelope (when enveloped) and returns the body map.

@@ -56,7 +56,13 @@ func TestAccCohort_driftDetectionMock(t *testing.T) {
 resource "mixpanel_cohort" "test" {
   name        = "drift-orig"
   description = "original description"
-  groups      = jsonencode([{ event = "signup", window = 30 }])
+  groups = jsonencode([{
+    event                     = "signup"
+    window                    = 30
+    filters                   = []
+    filtersOperator           = "and"
+    behavioralFiltersOperator = "and"
+  }])
 }`)
 
 	resource.Test(t, resource.TestCase{
@@ -156,7 +162,7 @@ func TestAccCohort_noFalseDriftOnNormalizedJSON(t *testing.T) {
 	config := providerConfig(srv.URL, `
 resource "mixpanel_cohort" "test" {
   name   = "normalized-json"
-  groups = "[{\"window\": 30, \"event\": \"signup\"}]"
+  groups = "[{\"window\": 30, \"filtersOperator\": \"and\", \"event\": \"signup\", \"filters\": [], \"behavioralFiltersOperator\": \"and\"}]"
 }`)
 
 	resource.Test(t, resource.TestCase{
@@ -167,7 +173,7 @@ resource "mixpanel_cohort" "test" {
 				// echo) and the implicit post-apply refresh+plan must be empty.
 				Config: config,
 				Check: resource.TestCheckResourceAttr(
-					"mixpanel_cohort.test", "groups", `[{"window": 30, "event": "signup"}]`),
+					"mixpanel_cohort.test", "groups", `[{"window": 30, "filtersOperator": "and", "event": "signup", "filters": [], "behavioralFiltersOperator": "and"}]`),
 			},
 			{
 				// An explicit refresh must also keep the plan empty: the wire
@@ -175,7 +181,7 @@ resource "mixpanel_cohort" "test" {
 				// semantically equal to the state value.
 				RefreshState: true,
 				Check: resource.TestCheckResourceAttr(
-					"mixpanel_cohort.test", "groups", `[{"window": 30, "event": "signup"}]`),
+					"mixpanel_cohort.test", "groups", `[{"window": 30, "filtersOperator": "and", "event": "signup", "filters": [], "behavioralFiltersOperator": "and"}]`),
 			},
 			{
 				// And a plain re-plan/apply of the same config is a no-op.

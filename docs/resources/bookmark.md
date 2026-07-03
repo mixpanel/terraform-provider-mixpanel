@@ -59,3 +59,16 @@ description: |-
 - `total_view_count` (Number)
 - `unique_view_count` (Number)
 - `workspace_id` (Number)
+
+## Plan-time validation of `params`
+
+Bookmark `params` are validated at `terraform plan` time against the
+known-corrupting shapes:
+
+- when `type` is `"funnels"` and the params carry a legacy `steps` array, it
+  must have between 1 and 100 steps (100 is the server-side ARB merger limit —
+  a bigger funnel saves but every query on it fails);
+- multi-metric params (`params.sections.show[]`) apply the behavior and
+  measurement rules from the `mixpanel_behavior` / `mixpanel_metric` docs
+  (funnels need at least 2 named steps; property-aggregating math needs a
+  non-null object `property`; `funnelOrder` is `"loose"` or `"any"`).

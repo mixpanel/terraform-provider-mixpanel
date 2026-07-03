@@ -5,6 +5,10 @@
 // project share via the shared-entities API and Read refreshes it. Entities a
 // service account creates are otherwise invisible to human users. Re-apply
 // these edits if regenerating this file.
+//
+// HAND-EDITED EXCEPTION 2: plan-time definition validation
+// (ValidateConfig, see analytics_validate.go for the rule table and citations).
+// Re-apply if regenerating.
 
 package provider
 
@@ -25,9 +29,10 @@ import (
 )
 
 var (
-	_ resource.Resource                = (*FormulaResource)(nil)
-	_ resource.ResourceWithConfigure   = (*FormulaResource)(nil)
-	_ resource.ResourceWithImportState = (*FormulaResource)(nil)
+	_ resource.Resource                   = (*FormulaResource)(nil)
+	_ resource.ResourceWithConfigure      = (*FormulaResource)(nil)
+	_ resource.ResourceWithImportState    = (*FormulaResource)(nil)
+	_ resource.ResourceWithValidateConfig = (*FormulaResource)(nil)
 )
 
 // keep the generated schema package and schema builder imported.
@@ -88,6 +93,13 @@ func (r *FormulaResource) collectionPath(projectID string) string {
 
 func (r *FormulaResource) instancePath(projectID, id string) string {
 	return strings.NewReplacer("{project_id}", projectID, "{metric_id}", id).Replace("/api/app/projects/{project_id}/metrics/{metric_id}")
+}
+
+// ValidateConfig rejects the confirmed webapp-corrupting definition shapes at
+// plan time (see analytics_validate.go). Formula definitions that carry no
+// behavior/measurement objects pass through untouched.
+func (r *FormulaResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	validatedJSONAttr(ctx, req.Config, "definition", &resp.Diagnostics, validateMetricDefinition)
 }
 
 func (r *FormulaResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {

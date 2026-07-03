@@ -5,6 +5,10 @@
 // project share via the shared-entities API and Read refreshes it. Entities a
 // service account creates are otherwise invisible to human users. Re-apply
 // these edits if regenerating this file.
+//
+// HAND-EDITED EXCEPTION 2: plan-time definition validation
+// (ValidateConfig, see analytics_validate.go for the rule table and citations).
+// Re-apply if regenerating.
 
 package provider
 
@@ -24,9 +28,10 @@ import (
 )
 
 var (
-	_ resource.Resource                = (*MetricResource)(nil)
-	_ resource.ResourceWithConfigure   = (*MetricResource)(nil)
-	_ resource.ResourceWithImportState = (*MetricResource)(nil)
+	_ resource.Resource                   = (*MetricResource)(nil)
+	_ resource.ResourceWithConfigure      = (*MetricResource)(nil)
+	_ resource.ResourceWithImportState    = (*MetricResource)(nil)
+	_ resource.ResourceWithValidateConfig = (*MetricResource)(nil)
 )
 
 // keep the generated schema package and schema builder imported.
@@ -88,6 +93,13 @@ func (r *MetricResource) collectionPath(projectID string) string {
 
 func (r *MetricResource) instancePath(projectID, id string) string {
 	return strings.NewReplacer("{project_id}", projectID, "{metric_id}", id).Replace("/api/app/projects/{project_id}/metrics/{metric_id}")
+}
+
+// ValidateConfig rejects the confirmed webapp-corrupting metric definition
+// shapes at plan time (see analytics_validate.go).
+func (r *MetricResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	validatedJSONAttr(ctx, req.Config, "definition", &resp.Diagnostics, validateMetricDefinition)
+	warnJSONAttr(ctx, req.Config, "definition", &resp.Diagnostics, retentionBucketWarnings)
 }
 
 func (r *MetricResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {

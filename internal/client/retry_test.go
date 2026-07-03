@@ -252,11 +252,11 @@ func TestCalculateBackoff(t *testing.T) {
 		minExpected time.Duration
 		maxExpected time.Duration
 	}{
-		{0, 1 * time.Second, 2 * time.Second},        // 1s + jitter
-		{1, 2 * time.Second, 3 * time.Second},        // 2s + jitter
-		{2, 4 * time.Second, 5 * time.Second},        // 4s + jitter
-		{3, 8 * time.Second, 9 * time.Second},        // 8s + jitter
-		{10, 60 * time.Second, 67 * time.Second},     // capped at 60s + jitter
+		{0, 1 * time.Second, 2 * time.Second},    // 1s + jitter
+		{1, 2 * time.Second, 3 * time.Second},    // 2s + jitter
+		{2, 4 * time.Second, 5 * time.Second},    // 4s + jitter
+		{3, 8 * time.Second, 9 * time.Second},    // 8s + jitter
+		{10, 60 * time.Second, 67 * time.Second}, // capped at 60s + jitter
 	}
 
 	for _, tt := range tests {
@@ -273,20 +273,20 @@ func TestCalculateBackoff(t *testing.T) {
 // TestIsRetryableStatus verifies the retry status code logic.
 func TestIsRetryableStatus(t *testing.T) {
 	tests := []struct {
-		status     int
-		retryable  bool
+		status    int
+		retryable bool
 	}{
 		{200, false},
 		{400, false},
 		{401, false},
 		{403, false},
 		{404, false},
-		{408, true},  // Request Timeout
-		{429, true},  // Too Many Requests
-		{500, true},  // Internal Server Error
-		{502, true},  // Bad Gateway
-		{503, true},  // Service Unavailable
-		{504, true},  // Gateway Timeout
+		{408, true}, // Request Timeout
+		{429, true}, // Too Many Requests
+		{500, true}, // Internal Server Error
+		{502, true}, // Bad Gateway
+		{503, true}, // Service Unavailable
+		{504, true}, // Gateway Timeout
 	}
 
 	for _, tt := range tests {

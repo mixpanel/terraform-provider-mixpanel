@@ -21,6 +21,7 @@ description: |-
 
 ### Optional
 
+- `expires` (String) Expiration timestamp in the exact format `2006-01-02T15:04:05Z` (UTC, trailing `Z`, no sub-seconds, no timezone offset). Leave unset for a non-expiring account. Validated at plan time; changing it forces a new service account (the API has no update operation).
 - `organization_id` (Number)
 - `projects` (Attributes List) (see [below for nested schema](#nestedatt--projects))
 - `role` (String)
@@ -32,7 +33,6 @@ description: |-
 - `creator` (Number)
 - `creator_email` (String)
 - `creator_name` (String)
-- `expires` (String)
 - `id` (Number) The ID of this resource.
 - `last_used` (String)
 - `token` (String)
@@ -45,3 +45,12 @@ Required:
 
 - `id` (Number)
 - `role` (String)
+
+## Expiration format
+
+The Mixpanel API only accepts service-account expirations in the exact format
+`%Y-%m-%dT%H:%M:%SZ` (for example `2030-01-01T00:00:00Z`) — UTC with a trailing
+`Z`, no sub-seconds, no timezone offsets, uppercase `T`/`Z`. Anything else is
+rejected with a 400. The provider validates the format at `terraform plan`
+time so a bad value never reaches the API. An unset/empty `expires` means the
+account never expires.

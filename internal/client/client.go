@@ -343,7 +343,6 @@ func (c *Client) Do(ctx context.Context, method, path string, body any) ([]byte,
 	}
 }
 
-
 // DoForm performs an HTTP request whose body is application/x-www-form-urlencoded.
 // A handful of legacy Mixpanel App API endpoints (e.g. custom_events) read their
 // parameters from request.POST (form fields) rather than a JSON body; sending
@@ -467,7 +466,6 @@ func (c *Client) DoForm(ctx context.Context, method, path string, values map[str
 		Body:       "exhausted retries",
 	}
 }
-
 
 // DoJSON performs Do and unmarshals the 2xx response body into out (if non-nil).
 func (c *Client) DoJSON(ctx context.Context, method, path string, body, out any) error {

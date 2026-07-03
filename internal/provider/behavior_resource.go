@@ -5,6 +5,10 @@
 // project share via the shared-entities API and Read refreshes it. Entities a
 // service account creates are otherwise invisible to human users. Re-apply
 // these edits if regenerating this file.
+//
+// HAND-EDITED EXCEPTION 2: plan-time definition/behaviors validation
+// (ValidateConfig, see analytics_validate.go for the rule table and citations).
+// Re-apply if regenerating.
 
 package provider
 
@@ -24,9 +28,10 @@ import (
 )
 
 var (
-	_ resource.Resource                = (*BehaviorResource)(nil)
-	_ resource.ResourceWithConfigure   = (*BehaviorResource)(nil)
-	_ resource.ResourceWithImportState = (*BehaviorResource)(nil)
+	_ resource.Resource                   = (*BehaviorResource)(nil)
+	_ resource.ResourceWithConfigure      = (*BehaviorResource)(nil)
+	_ resource.ResourceWithImportState    = (*BehaviorResource)(nil)
+	_ resource.ResourceWithValidateConfig = (*BehaviorResource)(nil)
 )
 
 // keep the generated schema package and schema builder imported.
@@ -89,6 +94,14 @@ func (r *BehaviorResource) collectionPath(projectID string) string {
 
 func (r *BehaviorResource) instancePath(projectID, id string) string {
 	return strings.NewReplacer("{project_id}", projectID, "{behavior_id}", id).Replace("/api/app/projects/{project_id}/behaviors/{behavior_id}")
+}
+
+// ValidateConfig rejects the confirmed webapp-corrupting behavior definition
+// shapes at plan time (see analytics_validate.go).
+func (r *BehaviorResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	validatedJSONAttr(ctx, req.Config, "definition", &resp.Diagnostics, validateBehaviorDefinition)
+	validatedJSONAttr(ctx, req.Config, "behaviors", &resp.Diagnostics, validateBehaviorBulk)
+	warnJSONAttr(ctx, req.Config, "definition", &resp.Diagnostics, retentionBucketWarnings)
 }
 
 func (r *BehaviorResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {

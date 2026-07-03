@@ -5,6 +5,7 @@ package provider
 
 import (
 	"fmt"
+	"regexp"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -161,9 +162,11 @@ resource "mixpanel_cohort" "test" {
   ])
 }
 `, name, projectID),
-				// Note: This may succeed on create but break query builder.
-				// This test documents the gap identified in gaps-and-gotchas §3.2.
-				// When validation is added, update ExpectError to match the validation message.
+				// Plan-time validation (analytics_validate.go) now rejects this
+				// shape before it reaches the API: a group without
+				// filtersOperator/behavioralFiltersOperator saves with 200 but
+				// breaks the webapp query builder (gaps-and-gotchas §3.2).
+				ExpectError: regexp.MustCompile(`filtersOperator: missing`),
 			},
 		},
 	})
