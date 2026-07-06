@@ -27,6 +27,7 @@ description: |-
 - `name` (String)
 - `project_id` (Number)
 - `selector` (Attributes) (see [below for nested schema](#nestedatt--selector))
+- `share_with_project` (Boolean) Whether to share this entity with the whole project after creation. Entities created by a service account are otherwise visible only to that service account. Defaults to `true`. See the [Entity sharing guide](../guides/sharing.md).
 
 ### Read-Only
 
@@ -38,3 +39,37 @@ description: |-
 
 <a id="nestedatt--selector"></a>
 ### Nested Schema for `selector`
+
+## Plan-time validation of `groups`
+
+A malformed cohort `groups` definition can be **accepted by the API with a 200
+and then crash the Mixpanel webapp query builder for the whole project**. The
+provider validates the decoded `groups` JSON at `terraform plan` time and
+rejects the known-corrupting shapes before anything is sent:
+
+- every filter group must carry a `filters` **array** (use `[]` for none) —
+  a missing or `null` `filters` saves but renders the cohort builder unusable;
+- `filtersOperator` and `behavioralFiltersOperator` are required on every
+  group; `groupingOperator` is required on every group except the last and
+  must be `"and"` or `"or"`;
+- filter entries with `filterOperator` `"is set"`/`"is not set"` must not
+  carry a `filterValue`;
+- boolean property filters compare against the **strings** `"true"`/`"false"`,
+  never JSON booleans;
+- property filters name their property via `propertyName`, not `value`.
+
+## Duplicate names, delete, and re-create
+
+Cohort names are unique among **active** cohorts of a project. Deleting a
+cohort is a soft delete, and a soft-deleted cohort does **not** block
+re-creating one with the same name — `terraform destroy` followed by
+`terraform apply` of the same-named cohort works.
+
+A `409 Cohort with name "X" already exists` on create therefore always means a
+**live** cohort with that name exists (created in the webapp, from another
+Terraform state, or left behind by an interrupted apply). The provider will
+not silently adopt it; the error names the conflicting cohort id so you can
+either `terraform import` it or pick a different name. (A soft-deleted cohort
+can be restored out-of-band with `PATCH /api/app/projects/{project_id}/cohorts/{id}`
+and body `{"deleted": false}`, but the restore also 409s while a live
+duplicate name exists.)

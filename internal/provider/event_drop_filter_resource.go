@@ -36,6 +36,10 @@ func NewEventDropFilterResource() resource.Resource {
 
 type EventDropFilterResource struct {
 	client *client.Client
+	// workspacePathBuilder resolves the canonical workspace per project (cached,
+	// thread-safe) so data-definitions calls can target the workspace mount the
+	// Mixpanel UI uses (same pick order as feature_flag: global, default, first).
+	workspacePathBuilder *client.WorkspacePathBuilder
 }
 
 func (r *EventDropFilterResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -45,6 +49,7 @@ func (r *EventDropFilterResource) Metadata(ctx context.Context, req resource.Met
 func (r *EventDropFilterResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	s := rsc.EventDropFilterResourceSchema(ctx)
 	s.Attributes["filters"] = schema.StringAttribute{Optional: true, Computed: true}
+	normalizedJSON(s.Attributes, "filters")
 	stabilizeComputed(s.Attributes)
 	resp.Schema = s
 }
@@ -62,6 +67,7 @@ func (r *EventDropFilterResource) Configure(ctx context.Context, req resource.Co
 		return
 	}
 	r.client = c
+	r.workspacePathBuilder = client.NewWorkspacePathBuilder(c)
 }
 
 // projectID resolves the project from the event_drop_filter project_id attribute (if any)
@@ -74,12 +80,52 @@ func (r *EventDropFilterResource) projectID(ctx context.Context, raw tftypes.Val
 	return r.client.ProjectID(""), nil
 }
 
-func (r *EventDropFilterResource) collectionPath(projectID string) string {
-	return strings.NewReplacer("{project_id}", projectID).Replace("/api/app/projects/{project_id}/data-definitions/events/drop-filters")
+// dataDefinitionsBases returns the ordered data-definitions base paths to try
+// for a project. The webapp mounts the same data-definitions urlconf on BOTH
+// /api/app/projects/{project_id}/data-definitions (app_api/projects/urls.py)
+// and /api/app/workspaces/{workspace_id}/data-definitions
+// (app_api/workspaces/urls.py); both variants address the same project-keyed
+// rows (drop filters are stored as EventDropFilters.project). The Mixpanel UI
+// (appApiUrl) addresses the workspace mount whenever the project has
+// workspaces, so the provider prefers the workspace mount, resolving the
+// canonical workspace with the same pick order feature_flag uses (global, then
+// default, then first). The project mount is kept as a fallback: it is the
+// only mount for projects without workspaces, and the workspace mount 404s
+// before reaching the view when the caller is not a member of the resolved
+// workspace (live-verified; service-account users are membership-checked like
+// any other user).
+func (r *EventDropFilterResource) dataDefinitionsBases(ctx context.Context, projectID string) []string {
+	projectBase := "/api/app/projects/" + projectID + "/data-definitions"
+	if r.workspacePathBuilder != nil {
+		if wid, err := r.workspacePathBuilder.WorkspaceID(ctx, projectID); err == nil && wid != "" {
+			return []string{"/api/app/workspaces/" + wid + "/data-definitions", projectBase}
+		}
+	}
+	return []string{projectBase}
 }
 
-func (r *EventDropFilterResource) instancePath(projectID, id string) string {
-	return strings.NewReplacer("{project_id}", projectID, "{id}", id).Replace("/api/app/projects/{project_id}/data-definitions/events/drop-filters")
+// doDataDefinitions issues one data-definitions request, preferring the
+// workspace mount and retrying the project mount on 404. The workspace-mount
+// membership check rejects non-members with 404 before the view runs, so no
+// side effect has occurred when the retry fires; both mounts hit identical
+// storage, so a genuine not-found 404s on the fallback too and surfaces as the
+// final error. All drop-filter verbs live on the collection path (the id
+// travels in the JSON body), so every call uses the same suffix.
+func (r *EventDropFilterResource) doDataDefinitions(ctx context.Context, method, projectID string, body any) ([]byte, error) {
+	bases := r.dataDefinitionsBases(ctx, projectID)
+	var lastErr error
+	for i, base := range bases {
+		respBody, err := r.client.Do(ctx, method, base+"/events/drop-filters", body)
+		if err == nil {
+			return respBody, nil
+		}
+		lastErr = err
+		if apiErr, ok := err.(*client.APIError); ok && apiErr.StatusCode == 404 && i < len(bases)-1 {
+			continue
+		}
+		return nil, err
+	}
+	return nil, lastErr
 }
 
 func (r *EventDropFilterResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -89,7 +135,7 @@ func (r *EventDropFilterResource) Create(ctx context.Context, req resource.Creat
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding event_drop_filter request", err.Error())
 		return
@@ -99,7 +145,7 @@ func (r *EventDropFilterResource) Create(ctx context.Context, req resource.Creat
 		resp.Diagnostics.AddError("Reading event_drop_filter event_name", err.Error())
 		return
 	}
-	respBody, err := r.client.Do(ctx, "POST", r.collectionPath(projectID), body)
+	respBody, err := r.doDataDefinitions(ctx, "POST", projectID, body)
 	if err != nil {
 		resp.Diagnostics.AddError("Creating event_drop_filter", err.Error())
 		return
@@ -113,7 +159,7 @@ func (r *EventDropFilterResource) Create(ctx context.Context, req resource.Creat
 		resp.Diagnostics.AddError("Creating event_drop_filter", "create response did not contain the new filter (no element matching event_name)")
 		return
 	}
-	r.writeEventDropFilterState(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, id)
+	r.writeEventDropFilterState(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, id)
 }
 
 func (r *EventDropFilterResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -127,7 +173,7 @@ func (r *EventDropFilterResource) Read(ctx context.Context, req resource.ReadReq
 		resp.Diagnostics.AddError("Reading event_drop_filter id", err.Error())
 		return
 	}
-	respBody, err := r.client.Do(ctx, "GET", r.collectionPath(projectID), nil)
+	respBody, err := r.doDataDefinitions(ctx, "GET", projectID, nil)
 	if err != nil {
 		if apiErr, ok := err.(*client.APIError); ok && apiErr.StatusCode == 404 {
 			resp.State.RemoveResource(ctx)
@@ -145,9 +191,10 @@ func (r *EventDropFilterResource) Read(ctx context.Context, req resource.ReadReq
 		resp.State.RemoveResource(ctx)
 		return
 	}
-	// Merge against prior state: the list item may omit user-managed fields the
-	// API never echoes back; preserve those instead of clobbering to null.
-	r.writeEventDropFilterState(ctx, &resp.State, &resp.Diagnostics, req.State.Raw, wire, projectID, id)
+	// Wire-preferred refresh (client.MergeRead): the list item wins for every
+	// field it carries (drift detection); prior state fills only the fields the
+	// listing omits (fields the API never echoes back are preserved, not nulled).
+	r.writeEventDropFilterState(ctx, &resp.State, &resp.Diagnostics, client.MergeRead, req.State.Raw, wire, projectID, id)
 }
 
 func (r *EventDropFilterResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -162,14 +209,14 @@ func (r *EventDropFilterResource) Update(ctx context.Context, req resource.Updat
 		resp.Diagnostics.AddError("Reading event_drop_filter id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForUpdate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding event_drop_filter request", err.Error())
 		return
 	}
 	// The id is carried in the JSON body, not the URL.
 	body["id"] = jsonNumberOrString(id)
-	respBody, err := r.client.Do(ctx, "PATCH", r.collectionPath(projectID), body)
+	respBody, err := r.doDataDefinitions(ctx, "PATCH", projectID, body)
 	if err != nil {
 		resp.Diagnostics.AddError("Updating event_drop_filter", err.Error())
 		return
@@ -183,7 +230,7 @@ func (r *EventDropFilterResource) Update(ctx context.Context, req resource.Updat
 		resp.Diagnostics.AddError("Updating event_drop_filter", "updated filter not found in response")
 		return
 	}
-	r.writeEventDropFilterState(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, id)
+	r.writeEventDropFilterState(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, id)
 }
 
 func (r *EventDropFilterResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -198,7 +245,7 @@ func (r *EventDropFilterResource) Delete(ctx context.Context, req resource.Delet
 		return
 	}
 	delBody := map[string]any{"id": jsonNumberOrString(id)}
-	if _, err := r.client.Do(ctx, "DELETE", r.collectionPath(projectID), delBody); err != nil {
+	if _, err := r.doDataDefinitions(ctx, "DELETE", projectID, delBody); err != nil {
 		if apiErr, ok := err.(*client.APIError); ok && (apiErr.StatusCode == 404) {
 			return
 		}
@@ -220,11 +267,12 @@ func (r *EventDropFilterResource) ImportState(ctx context.Context, req resource.
 	setImportID(ctx, &resp.State, &resp.Diagnostics, "id", parts[1], "string")
 }
 
-// writeEventDropFilterState turns an unwrapped API body into resource state. base is the
-// planned raw value (req.Plan.Raw) on create/update so config-supplied values are
-// preserved verbatim, or a null tftypes.Value on read (state is rebuilt from the
-// API response alone). See client.RawFromWireMerged for the merge semantics.
-func (r *EventDropFilterResource) writeEventDropFilterState(ctx context.Context, state *tfsdk.State, diags *diagAppender, base tftypes.Value, wire map[string]any, projectID, id string) {
+// writeEventDropFilterState turns an unwrapped API body into resource state. On
+// create/update (client.MergeApply, base = req.Plan.Raw) config-supplied values
+// are preserved verbatim; on read (client.MergeRead, base = req.State.Raw) the
+// API response wins wherever it carries a field, so drift is refreshed into
+// state. See client.RawFromWireMerged for the exact merge semantics.
+func (r *EventDropFilterResource) writeEventDropFilterState(ctx context.Context, state *tfsdk.State, diags *diagAppender, mode client.MergeMode, base tftypes.Value, wire map[string]any, projectID, id string) {
 	extras := map[string]any{
 		"id": id,
 	}
@@ -232,7 +280,7 @@ func (r *EventDropFilterResource) writeEventDropFilterState(ctx context.Context,
 		extras["project_id"] = projectID
 	}
 	schemaType := state.Schema.Type().TerraformType(ctx)
-	val, err := client.RawFromWireMerged(schemaType, base, wire, extras, EventDropFilterAttrSpec())
+	val, err := client.RawFromWireMerged(schemaType, mode, base, wire, extras, EventDropFilterAttrSpec())
 	if err != nil {
 		diags.AddError("Building event_drop_filter state", err.Error())
 		return

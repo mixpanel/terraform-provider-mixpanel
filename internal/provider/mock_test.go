@@ -74,6 +74,11 @@ type mockOpts struct {
 	resultsMap bool   // shape results as {id: obj} (themes_to_dict_map convention)
 	upsert     bool   // create POSTs to an instance path with a config-supplied id
 	listCreate bool   // create response is a list the provider selects from (collection-body-id)
+	// singletonGet models a per-project singleton (business_context, settings):
+	// the collection GET returns the single stored object directly (or an empty
+	// object when nothing is stored yet), never a list — matching APIResponse
+	// views that return results={...} for the project's one settings row.
+	singletonGet bool
 	// createIDField, when set and different from idField, is the field name the
 	// CREATE response carries the server-assigned id under. A read_after_create
 	// entity whose create response is a flat id-bearing object can return the id
@@ -81,6 +86,10 @@ type mockOpts struct {
 	// (e.g. behavior_id): the create handler extracts the id from this key, then
 	// re-reads via the instance GET (which returns the id under idField).
 	createIDField string
+	// createDefaults are server-assigned defaults merged into a created object
+	// when the request body does not carry them (e.g. an experiment is born
+	// with status "draft", a feature flag with status "disabled").
+	createDefaults map[string]any
 	// rpcLifecycle models an org-scoped RPC entity (project) that has no REST CRUD:
 	// create POSTs {createNameKey:[<name>]} to .../create-<plural>/ and the
 	// enveloped response is an ARRAY of created rows (each {idField, matchAttr:name});
@@ -92,6 +101,15 @@ type mockOpts struct {
 	matchAttr     string
 }
 
+// capturedRequest records one body-bearing request the mock served, so tests
+// can assert on the EXACT wire body the provider sent (e.g. that an update
+// body contains only allowlisted keys).
+type capturedRequest struct {
+	method string
+	path   string
+	body   map[string]any
+}
+
 // mockServer is an in-memory echo backend for the Mixpanel App API.
 type mockServer struct {
 	*httptest.Server
@@ -99,6 +117,26 @@ type mockServer struct {
 	mu      sync.Mutex
 	store   map[string]map[string]any
 	counter int
+	// captured records every body-bearing request in arrival order (appended by
+	// parseBody). Read it via requests().
+	captured []capturedRequest
+	// shares holds shared-entities project shares keyed by
+	// "<entity_type>/<entity_id>" -> project id -> canEdit. See handleSharedEntities.
+	shares map[string]map[string]bool
+}
+
+// requests returns a copy of the captured body-bearing requests, optionally
+// filtered by method ("" matches all).
+func (m *mockServer) requests(method string) []capturedRequest {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := []capturedRequest{}
+	for _, cr := range m.captured {
+		if method == "" || cr.method == method {
+			out = append(out, cr)
+		}
+	}
+	return out
 }
 
 // newMockServer starts an echo server and registers cleanup. idField defaults to
@@ -108,7 +146,7 @@ func newMockServer(t *testing.T, opts mockOpts) *mockServer {
 	if opts.idField == "" {
 		opts.idField = "id"
 	}
-	m := &mockServer{opts: opts, store: map[string]map[string]any{}, counter: 1000}
+	m := &mockServer{opts: opts, store: map[string]map[string]any{}, counter: 1000, shares: map[string]map[string]bool{}}
 	m.Server = httptest.NewServer(http.HandlerFunc(m.handle))
 	t.Cleanup(m.Close)
 	return m
@@ -127,11 +165,43 @@ func (m *mockServer) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Shared-entities routes (project sharing; see sharing.go). Handled before
+	// the generic CRUD switch so POST .../upsert and .../delete are not
+	// mistaken for entity creates. Additive: entity CRUD is unaffected.
+	if idx := strings.Index(r.URL.Path, "/shared-entities/"); idx >= 0 {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		m.handleSharedEntities(w, r, r.URL.Path[idx+len("/shared-entities/"):])
+		return
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	if m.opts.rpcLifecycle {
 		m.handleRPC(w, r)
+		return
+	}
+
+	// Dashboards instance PATCH routes, additive: they model the board content
+	// API (create/delete a board report bookmark, which the bookmark resource
+	// uses for BOARDS_DASHBOARD_BOOKMARK_TYPES) and the layout write format
+	// (stored back in the GET shape so provider refreshes exercise the
+	// read-shape transform). Only PATCHes to a .../dashboards/{id} path are
+	// intercepted; every other entity still hits the generic CRUD switch.
+	// Caller must NOT hold m.mu here; we do (locked above).
+	if r.Method == http.MethodPatch && strings.Contains(r.URL.Path, "/dashboards/") {
+		m.handleDashboardPatch(w, r)
+		return
+	}
+
+	// Lifecycle verb routes (feature flags + experiments), additive: they model
+	// POST/DELETE {id}/archive, PUT {id}/launch, PUT|POST {id}/force_conclude
+	// and PATCH {id}/decide so desired_state transition tests can run against
+	// the mock. Handled before the generic CRUD switch so a POST to
+	// .../{id}/archive is not mistaken for an entity create. Caller holds m.mu.
+	if verb, id, ok := lifecycleVerb(r.URL.Path); ok {
+		m.handleLifecycleVerb(w, r, verb, id)
 		return
 	}
 
@@ -172,6 +242,11 @@ func (m *mockServer) handle(w http.ResponseWriter, r *http.Request) {
 			// read -> behavior_id). Both keys are harmless on the stored object.
 			body[m.opts.createIDField] = m.idValue(idStr)
 		}
+		for k, v := range m.opts.createDefaults {
+			if _, ok := body[k]; !ok {
+				body[k] = v
+			}
+		}
 		m.store[idStr] = body
 		if m.opts.listCreate {
 			// Collection-body-id create: the provider selects the new element from
@@ -184,6 +259,16 @@ func (m *mockServer) handle(w http.ResponseWriter, r *http.Request) {
 		id := lastSegment(r.URL.Path)
 		if obj, ok := m.store[id]; ok {
 			m.respond(w, id, obj)
+			return
+		}
+		if m.opts.singletonGet {
+			// Per-project singleton: the collection GET returns the one stored
+			// object (or an empty object before first write), never a list.
+			for _, o := range m.store {
+				m.respondValue(w, o)
+				return
+			}
+			m.respondValue(w, map[string]any{})
 			return
 		}
 		// Collection GET (read-from-list entities): return every stored object.
@@ -211,6 +296,369 @@ func (m *mockServer) handle(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 	}
+}
+
+// handleDashboardPatch answers PATCH .../dashboards/{id} the way the real API
+// behaves (live-verified 2026-07-03):
+//
+//   - body {"content":{"action":"create","content_type":"report",
+//     "content_params":{"bookmark":{...}}}} creates the bookmark (stored so
+//     GET .../bookmarks/{id} serves it, params kept as the STRING the
+//     provider sent — matching the live GET), grows the dashboard's
+//     GET-shape layout by one row+cell, and echoes the full dashboard with
+//     `new_content` whose params are REWRITTEN into an object (the live
+//     server normalizes params in the content-create echo).
+//   - body {"content":{"action":"delete","content_id":N}} removes the stored
+//     bookmark and its layout cell(s); repeating the delete is a 200 no-op.
+//   - a body carrying "layout" in the WRITE format ({"rows":[...],
+//     "rows_order":[...]}) is converted to the GET shape ({"rows":{id:row},
+//     "order":[...],"version":"2.0.0"}, cells enriched with content
+//     pointers) before storing, so refreshes exercise the provider's
+//     read-shape transform.
+//   - anything else merges like the generic PATCH.
+//
+// Caller holds m.mu.
+func (m *mockServer) handleDashboardPatch(w http.ResponseWriter, r *http.Request) {
+	id := lastSegment(r.URL.Path)
+	obj, ok := m.store[id]
+	if !ok {
+		http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+		return
+	}
+	body := m.parseBody(r)
+	if content, ok := body["content"].(map[string]any); ok {
+		m.handleDashboardContent(w, id, obj, content)
+		return
+	}
+	if lay, ok := body["layout"].(map[string]any); ok {
+		if converted, ok := mockLayoutGetShapeFromWrite(lay); ok {
+			body["layout"] = converted
+		}
+	}
+	for k, v := range body {
+		obj[k] = v
+	}
+	obj[m.opts.idField] = m.idValue(id)
+	m.store[id] = obj
+	m.respond(w, id, obj)
+}
+
+// handleDashboardContent models the board content actions. Caller holds m.mu.
+func (m *mockServer) handleDashboardContent(w http.ResponseWriter, dashID string, dash map[string]any, content map[string]any) {
+	action, _ := content["action"].(string)
+	switch action {
+	case "create":
+		cp, _ := content["content_params"].(map[string]any)
+		bm, _ := cp["bookmark"].(map[string]any)
+		if bm == nil {
+			http.Error(w, `{"status":"error","error":"content_params.bookmark required"}`, http.StatusBadRequest)
+			return
+		}
+		m.counter++
+		idStr := strconv.Itoa(m.counter)
+		stored := map[string]any{}
+		for k, v := range bm {
+			stored[k] = v
+		}
+		stored[m.opts.idField] = m.idValue(idStr)
+		stored["dashboard_id"] = m.idValue(dashID)
+		m.store[idStr] = stored
+		// new_content echoes the bookmark with params rewritten into an object.
+		echo := map[string]any{}
+		for k, v := range stored {
+			echo[k] = v
+		}
+		if s, ok := stored["params"].(string); ok {
+			var decoded map[string]any
+			if json.Unmarshal([]byte(s), &decoded) == nil && decoded != nil {
+				decoded["__mock_server_rewritten"] = true
+				echo["params"] = decoded
+			}
+		}
+		layout := mockDashboardLayoutOf(dash)
+		rows, _ := layout["rows"].(map[string]any)
+		rowID := "row" + idStr
+		rows[rowID] = map[string]any{
+			"height": 0.0,
+			"cells": []any{map[string]any{
+				"id": "cell" + idStr, "width": 12.0,
+				"content_id": m.idValue(idStr), "content_type": "report",
+			}},
+		}
+		layout["order"] = append(mockAnySlice(layout["order"]), rowID)
+		dash["layout"] = layout
+		m.store[dashID] = dash
+		respObj := map[string]any{}
+		for k, v := range dash {
+			respObj[k] = v
+		}
+		respObj["new_content"] = echo
+		m.respondValue(w, respObj)
+	case "delete":
+		cid := idToKey(content["content_id"])
+		delete(m.store, cid)
+		layout := mockDashboardLayoutOf(dash)
+		rows, _ := layout["rows"].(map[string]any)
+		newOrder := []any{}
+		for _, ro := range mockAnySlice(layout["order"]) {
+			rid, _ := ro.(string)
+			row, _ := rows[rid].(map[string]any)
+			if row == nil {
+				continue
+			}
+			kept := []any{}
+			for _, c := range mockAnySlice(row["cells"]) {
+				cm, _ := c.(map[string]any)
+				if cm != nil && idToKey(cm["content_id"]) == cid {
+					continue
+				}
+				kept = append(kept, c)
+			}
+			if len(kept) == 0 {
+				delete(rows, rid)
+				continue
+			}
+			row["cells"] = kept
+			newOrder = append(newOrder, rid)
+		}
+		layout["order"] = newOrder
+		dash["layout"] = layout
+		m.store[dashID] = dash
+		m.respondValue(w, dash)
+	default:
+		http.Error(w, `{"status":"error","error":"unsupported content action"}`, http.StatusBadRequest)
+	}
+}
+
+// mockDashboardLayoutOf returns the dashboard's GET-shape layout, creating an
+// empty one ({"rows":{},"order":[],"version":"2.0.0"}) when absent.
+func mockDashboardLayoutOf(dash map[string]any) map[string]any {
+	if l, ok := dash["layout"].(map[string]any); ok {
+		if _, ok := l["rows"].(map[string]any); ok {
+			return l
+		}
+	}
+	l := map[string]any{"rows": map[string]any{}, "order": []any{}, "version": "2.0.0"}
+	dash["layout"] = l
+	return l
+}
+
+// mockLayoutGetShapeFromWrite converts a layout WRITE body into the GET shape
+// the real dashboards GET returns (rows dict keyed by row id, order list,
+// version string, cells enriched with content pointers).
+func mockLayoutGetShapeFromWrite(lay map[string]any) (map[string]any, bool) {
+	rowsList, ok := lay["rows"].([]any)
+	if !ok {
+		return nil, false
+	}
+	rows := map[string]any{}
+	order := []any{}
+	if ro, ok := lay["rows_order"].([]any); ok {
+		order = ro
+	}
+	for _, rr := range rowsList {
+		rm, ok := rr.(map[string]any)
+		if !ok {
+			continue
+		}
+		rid, _ := rm["id"].(string)
+		if rid == "" {
+			rid, _ = rm["temp_id"].(string)
+		}
+		cells := []any{}
+		for _, c := range mockAnySlice(rm["cells"]) {
+			cm, _ := c.(map[string]any)
+			if cm == nil {
+				continue
+			}
+			cells = append(cells, map[string]any{
+				"id": cm["id"], "width": cm["width"],
+				"content_id": nil, "content_type": "report",
+			})
+		}
+		rows[rid] = map[string]any{"height": rm["height"], "cells": cells}
+	}
+	return map[string]any{"rows": rows, "order": order, "version": "2.0.0"}, true
+}
+
+func mockAnySlice(v any) []any {
+	s, _ := v.([]any)
+	return s
+}
+
+// lifecycleVerb recognizes lifecycle verb paths ({id}/archive, {id}/launch,
+// {id}/force_conclude, {id}/decide) and returns the verb and instance id.
+func lifecycleVerb(p string) (verb, id string, ok bool) {
+	segs := strings.Split(strings.Trim(p, "/"), "/")
+	if len(segs) < 2 {
+		return "", "", false
+	}
+	switch last := segs[len(segs)-1]; last {
+	case "archive", "launch", "force_conclude", "decide":
+		return last, segs[len(segs)-2], true
+	}
+	return "", "", false
+}
+
+// handleLifecycleVerb models the feature-flag / experiment lifecycle verbs the
+// way the real API behaves (live-verified 2026-07-02):
+//
+//   - POST {id}/archive soft-deletes (sets `deleted`); refuses an enabled flag
+//     (400 CannotDeleteEnabledFlag) and auto-concludes an active experiment.
+//   - DELETE {id}/archive restores (clears `deleted`).
+//   - PUT {id}/launch: draft/active/concluded -> active (+start_date); a
+//     decided experiment (success/fail) is rejected (ExperimentAlreadyStarted).
+//   - PUT|POST {id}/force_conclude: active -> concluded (+end_date); a no-op
+//     from any other status, matching the server's tolerated
+//     ExperimentAlreadyConcluded.
+//   - PATCH {id}/decide: sets status success/fail from the body's `success`.
+//
+// Caller holds m.mu.
+func (m *mockServer) handleLifecycleVerb(w http.ResponseWriter, r *http.Request, verb, id string) {
+	obj, ok := m.store[id]
+	if !ok {
+		http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+		return
+	}
+	status, _ := obj["status"].(string)
+	switch verb {
+	case "archive":
+		switch r.Method {
+		case http.MethodPost:
+			if status == "enabled" {
+				http.Error(w, `{"status":"error","error":"Unable to delete enabled feature flag","type":"CannotDeleteEnabledFlag"}`, http.StatusBadRequest)
+				return
+			}
+			if status == "active" {
+				obj["status"] = "concluded"
+				obj["end_date"] = "2026-01-01T00:00:00"
+			}
+			obj["deleted"] = "2026-01-01T00:00:00"
+			m.store[id] = obj
+			m.respondValue(w, map[string]any{})
+		case http.MethodDelete:
+			obj["deleted"] = nil
+			m.store[id] = obj
+			m.respond(w, id, obj)
+		default:
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		}
+	case "launch":
+		if r.Method != http.MethodPut {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+		switch status {
+		case "", "draft", "active", "concluded":
+			obj["status"] = "active"
+			if obj["start_date"] == nil {
+				obj["start_date"] = "2026-01-01T00:00:00"
+			}
+			m.store[id] = obj
+			m.respond(w, id, obj)
+		default:
+			http.Error(w, `{"status":"error","error":"ExperimentAlreadyStarted"}`, http.StatusBadRequest)
+		}
+	case "force_conclude":
+		if r.Method != http.MethodPut && r.Method != http.MethodPost {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+		if status == "active" {
+			obj["status"] = "concluded"
+			obj["end_date"] = "2026-01-01T00:00:00"
+		}
+		m.store[id] = obj
+		m.respond(w, id, obj)
+	case "decide":
+		if r.Method != http.MethodPatch {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+		body := m.parseBody(r)
+		if s, _ := body["success"].(bool); s {
+			obj["status"] = "success"
+		} else {
+			obj["status"] = "fail"
+		}
+		if obj["end_date"] == nil {
+			obj["end_date"] = "2026-01-01T00:00:00"
+		}
+		m.store[id] = obj
+		m.respond(w, id, obj)
+	}
+}
+
+// handleSharedEntities models the shared-entities API (always enveloped,
+// regardless of the entity's own envelope contract — matching the real API,
+// verified live 2026-07-02):
+//
+//	POST .../shared-entities/{type}/{id}/upsert  {"id":e,"projectShares":[{"id":p,"canEdit":b}]}
+//	POST .../shared-entities/{type}/{id}/delete  {"id":e,"projectShares":[p]}
+//	GET  .../shared-entities/{type}/{id}         -> results.projectShares
+//
+// rest is the path remainder after "/shared-entities/". Caller holds m.mu.
+func (m *mockServer) handleSharedEntities(w http.ResponseWriter, r *http.Request, rest string) {
+	segs := strings.Split(strings.Trim(rest, "/"), "/")
+	if len(segs) < 2 {
+		http.Error(w, `{"status":"error","error":"bad shared-entities path"}`, http.StatusNotFound)
+		return
+	}
+	key := segs[0] + "/" + segs[1]
+	action := ""
+	if len(segs) > 2 {
+		action = segs[2]
+	}
+	switch {
+	case r.Method == http.MethodPost && action == "upsert":
+		body := m.parseBody(r)
+		shares, _ := body["projectShares"].([]any)
+		if m.shares[key] == nil {
+			m.shares[key] = map[string]bool{}
+		}
+		for _, s := range shares {
+			obj, ok := s.(map[string]any)
+			if !ok {
+				continue
+			}
+			canEdit, _ := obj["canEdit"].(bool)
+			m.shares[key][idToKey(obj["id"])] = canEdit
+		}
+		m.respondShares(w, key, segs[1])
+	case r.Method == http.MethodPost && action == "delete":
+		body := m.parseBody(r)
+		ids, _ := body["projectShares"].([]any)
+		for _, id := range ids {
+			delete(m.shares[key], idToKey(id))
+		}
+		m.respondShares(w, key, segs[1])
+	case r.Method == http.MethodGet && action == "":
+		m.respondShares(w, key, segs[1])
+	default:
+		http.Error(w, `{"status":"error","error":"method not allowed"}`, http.StatusMethodNotAllowed)
+	}
+}
+
+// respondShares writes the shared-entities dict for one entity (always
+// enveloped, like the real endpoint).
+func (m *mockServer) respondShares(w http.ResponseWriter, key, entityID string) {
+	projectShares := make([]any, 0, len(m.shares[key]))
+	for pid, canEdit := range m.shares[key] {
+		var idVal any = pid
+		if f, err := strconv.ParseFloat(pid, 64); err == nil {
+			idVal = f
+		}
+		projectShares = append(projectShares, map[string]any{"id": idVal, "canEdit": canEdit})
+	}
+	writeJSON(w, map[string]any{
+		"status": "ok",
+		"results": map[string]any{
+			"id":            entityID,
+			"userShares":    []any{},
+			"teamShares":    []any{},
+			"projectShares": projectShares,
+		},
+	})
 }
 
 // handleRPC answers the org-scoped RPC lifecycle (project): create-<plural>,
@@ -250,6 +698,19 @@ func (m *mockServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 		m.respondValue(w, list)
 	default:
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+	}
+}
+
+// mutateStored applies fn to every stored object under the store lock,
+// simulating an OUT-OF-BAND edit (a webapp user changing the entity) between
+// test steps. Tests run it from a TestStep PreConfig so the step's refresh
+// observes the drifted server state; a subsequent RefreshState step with
+// ExpectNonEmptyPlan then proves the provider surfaces the drift.
+func (m *mockServer) mutateStored(fn func(id string, obj map[string]any)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, obj := range m.store {
+		fn(id, obj)
 	}
 }
 
@@ -295,9 +756,12 @@ func (m *mockServer) parseBody(r *http.Request) map[string]any {
 				out[k] = vs[0]
 			}
 		}
+		m.captured = append(m.captured, capturedRequest{method: r.Method, path: r.URL.Path, body: out})
 		return out
 	}
 	_ = json.NewDecoder(r.Body).Decode(&out)
+	// Caller (handle / handleSharedEntities / handleRPC) holds m.mu.
+	m.captured = append(m.captured, capturedRequest{method: r.Method, path: r.URL.Path, body: out})
 	return out
 }
 

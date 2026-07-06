@@ -1,0 +1,6 @@
+sku,name,category,price,brand,availability
+SKU001,Pro Widget,Electronics,299.99,BrandA,in_stock
+SKU002,Basic Gadget,Electronics,149.99,BrandB,in_stock
+SKU003,Premium Tool,Tools,499.99,BrandA,limited
+SKU004,Standard Kit,Kits,89.99,BrandC,in_stock
+SKU005,Deluxe Package,Packages,999.99,BrandA,out_of_stock

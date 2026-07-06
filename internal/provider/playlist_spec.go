@@ -9,13 +9,15 @@ import "github.com/mixpanel/terraform-provider-mixpanel/internal/client"
 // by the playlist resource and data source.
 func PlaylistAttrSpec() client.AttrSpec {
 	return client.AttrSpec{
-		IDAttr:            "id",
-		ProjectIDAttr:     "project_id",
-		PathParamAttrs:    map[string]bool{"playlist_id": true},
-		JSONEncodeAttrs:   map[string]bool{"filters": true, "time_filter": true},
-		JSONStringAttrs:   map[string]bool{},
-		JSONEncodeWireKey: map[string]string{},
-		OutputOnlyAttrs:   map[string]bool{"allow_staff_override": true, "can_pin": true, "can_share": true, "can_update_basic": true, "can_view": true, "is_shared_with_project": true, "is_superadmin": true, "last_modified_by_email": true, "last_modified_by_id": true, "last_modified_by_name": true},
-		SpreadAttrs:       map[string]bool{},
+		IDAttr:              "id",
+		ProjectIDAttr:       "project_id",
+		PathParamAttrs:      map[string]bool{"playlist_id": true},
+		JSONEncodeAttrs:     map[string]bool{"filters": true, "time_filter": true},
+		JSONStringAttrs:     map[string]bool{},
+		JSONEncodeWireKey:   map[string]string{"allow_staff_override": "allow_staff_override", "bookmarked_replays": "bookmarked_replays", "can_pin": "can_pin", "can_share": "can_share", "can_update_basic": "can_update_basic", "can_view": "can_view", "dashboard_id": "dashboard_id", "is_shared_with_project": "is_shared_with_project", "is_sort_ascending": "is_sort_ascending", "is_superadmin": "is_superadmin", "last_modified_by_email": "last_modified_by_email", "last_modified_by_id": "last_modified_by_id", "last_modified_by_name": "last_modified_by_name", "sort_property": "sort_property", "time_filter": "time_filter"},
+		OutputOnlyAttrs:     map[string]bool{"allow_staff_override": true, "can_pin": true, "can_share": true, "can_update_basic": true, "can_view": true, "is_shared_with_project": true, "is_superadmin": true, "last_modified_by_email": true, "last_modified_by_id": true, "last_modified_by_name": true},
+		SpreadAttrs:         map[string]bool{},
+		CreateWritableAttrs: map[string]bool{"bookmarked_replays": true, "dashboard_id": true, "description": true, "filters": true, "is_sort_ascending": true, "name": true, "sort_property": true, "time_filter": true},
+		UpdateWritableAttrs: map[string]bool{"bookmarked_replays": true, "dashboard_id": true, "description": true, "filters": true, "is_sort_ascending": true, "name": true, "sort_property": true, "time_filter": true},
 	}
 }

@@ -98,7 +98,7 @@ func (r *DatasetResource) Create(ctx context.Context, req resource.CreateRequest
 		resp.Diagnostics.AddError("Creating dataset", "dataset_id must be set in configuration (client-supplied id)")
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding dataset request", err.Error())
 		return
@@ -118,7 +118,7 @@ func (r *DatasetResource) Create(ctx context.Context, req resource.CreateRequest
 	if rid := idForDataset(wire); rid != "" {
 		id = rid
 	}
-	r.writeDatasetState(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, id)
+	r.writeDatasetState(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, id)
 }
 
 func (r *DatasetResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -146,13 +146,12 @@ func (r *DatasetResource) Read(ctx context.Context, req resource.ReadRequest, re
 		resp.Diagnostics.AddError("Decoding dataset response", err.Error())
 		return
 	}
-	// Use the prior state as the merge base so attributes the user manages but
-	// the API does not faithfully echo back on a GET (fields it never returns, or
-	// returns enriched with server-assigned sub-keys such as a subscription id)
-	// are preserved instead of being clobbered to null / a server-mangled shape,
-	// which would otherwise produce a permanent post-refresh diff. Computed-only
-	// values (absent from prior state) are still refreshed from the API response.
-	r.writeDatasetState(ctx, &resp.State, &resp.Diagnostics, req.State.Raw, wire, projectID, id)
+	// Wire-preferred refresh (client.MergeRead): the API response wins for every
+	// attribute it carries, so out-of-band edits become visible to `terraform
+	// plan` as drift. The prior state is the merge base only for attributes the
+	// GET omits (fields the API never echoes back, write-only secrets, spread
+	// attributes) — those are preserved instead of being clobbered to null.
+	r.writeDatasetState(ctx, &resp.State, &resp.Diagnostics, client.MergeRead, req.State.Raw, wire, projectID, id)
 }
 
 func (r *DatasetResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -167,7 +166,7 @@ func (r *DatasetResource) Update(ctx context.Context, req resource.UpdateRequest
 		resp.Diagnostics.AddError("Reading dataset id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForUpdate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding dataset request", err.Error())
 		return
@@ -182,7 +181,7 @@ func (r *DatasetResource) Update(ctx context.Context, req resource.UpdateRequest
 		resp.Diagnostics.AddError("Decoding dataset response", err.Error())
 		return
 	}
-	r.writeDatasetState(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, id)
+	r.writeDatasetState(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, id)
 }
 
 func (r *DatasetResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -219,11 +218,12 @@ func (r *DatasetResource) ImportState(ctx context.Context, req resource.ImportSt
 	setImportID(ctx, &resp.State, &resp.Diagnostics, "dataset_id", parts[1], "string")
 }
 
-// writeDatasetState turns an unwrapped API body into resource state. base is the
-// planned raw value (req.Plan.Raw) on create/update so config-supplied values are
-// preserved verbatim, or a null tftypes.Value on read (state is rebuilt from the
-// API response alone). See client.RawFromWireMerged for the merge semantics.
-func (r *DatasetResource) writeDatasetState(ctx context.Context, state *tfsdk.State, diags *diagAppender, base tftypes.Value, wire map[string]any, projectID, id string) {
+// writeDatasetState turns an unwrapped API body into resource state. On
+// create/update (client.MergeApply, base = req.Plan.Raw) config-supplied values
+// are preserved verbatim; on read (client.MergeRead, base = req.State.Raw) the
+// API response wins wherever it carries a field, so drift is refreshed into
+// state. See client.RawFromWireMerged for the exact merge semantics.
+func (r *DatasetResource) writeDatasetState(ctx context.Context, state *tfsdk.State, diags *diagAppender, mode client.MergeMode, base tftypes.Value, wire map[string]any, projectID, id string) {
 	extras := map[string]any{
 		"dataset_id": id,
 	}
@@ -231,7 +231,7 @@ func (r *DatasetResource) writeDatasetState(ctx context.Context, state *tfsdk.St
 		extras["project_id"] = projectID
 	}
 	schemaType := state.Schema.Type().TerraformType(ctx)
-	val, err := client.RawFromWireMerged(schemaType, base, wire, extras, DatasetAttrSpec())
+	val, err := client.RawFromWireMerged(schemaType, mode, base, wire, extras, DatasetAttrSpec())
 	if err != nil {
 		diags.AddError("Building dataset state", err.Error())
 		return

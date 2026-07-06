@@ -9,13 +9,15 @@ import "github.com/mixpanel/terraform-provider-mixpanel/internal/client"
 // by the canvas resource and data source.
 func CanvasAttrSpec() client.AttrSpec {
 	return client.AttrSpec{
-		IDAttr:            "id",
-		ProjectIDAttr:     "project_id",
-		PathParamAttrs:    map[string]bool{"canvas_id": true},
-		JSONEncodeAttrs:   map[string]bool{},
-		JSONStringAttrs:   map[string]bool{},
-		JSONEncodeWireKey: map[string]string{},
-		OutputOnlyAttrs:   map[string]bool{"content_type": true, "created": true, "creator_email": true, "creator_id": true, "creator_name": true, "is_favorited": true, "last_modified_by_email": true, "last_modified_by_id": true, "last_modified_by_name": true, "modified": true, "pinned_date": true, "room_id": true},
-		SpreadAttrs:       map[string]bool{},
+		IDAttr:              "id",
+		ProjectIDAttr:       "project_id",
+		PathParamAttrs:      map[string]bool{"canvas_id": true},
+		JSONEncodeAttrs:     map[string]bool{},
+		JSONStringAttrs:     map[string]bool{},
+		JSONEncodeWireKey:   map[string]string{"content_type": "content_type", "creator_email": "creator_email", "creator_id": "creator_id", "creator_name": "creator_name", "is_favorited": "is_favorited", "last_modified_by_email": "last_modified_by_email", "last_modified_by_id": "last_modified_by_id", "last_modified_by_name": "last_modified_by_name", "pinned_date": "pinned_date", "room_id": "room_id"},
+		OutputOnlyAttrs:     map[string]bool{"content_type": true, "created": true, "creator_email": true, "creator_id": true, "creator_name": true, "is_favorited": true, "last_modified_by_email": true, "last_modified_by_id": true, "last_modified_by_name": true, "modified": true, "pinned_date": true, "room_id": true},
+		SpreadAttrs:         map[string]bool{},
+		CreateWritableAttrs: map[string]bool{"description": true, "name": true},
+		UpdateWritableAttrs: map[string]bool{"description": true, "name": true},
 	}
 }

@@ -9,13 +9,15 @@ import "github.com/mixpanel/terraform-provider-mixpanel/internal/client"
 // by the data_governance_settings resource and data source.
 func DataGovernanceSettingsAttrSpec() client.AttrSpec {
 	return client.AttrSpec{
-		IDAttr:            "id",
-		ProjectIDAttr:     "project_id",
-		PathParamAttrs:    map[string]bool{},
-		JSONEncodeAttrs:   map[string]bool{"data_standards": true},
-		JSONStringAttrs:   map[string]bool{},
-		JSONEncodeWireKey: map[string]string{"data_standards": "dataStandards"},
-		OutputOnlyAttrs:   map[string]bool{},
-		SpreadAttrs:       map[string]bool{},
+		IDAttr:              "id",
+		ProjectIDAttr:       "project_id",
+		PathParamAttrs:      map[string]bool{},
+		JSONEncodeAttrs:     map[string]bool{"data_standards": true},
+		JSONStringAttrs:     map[string]bool{},
+		JSONEncodeWireKey:   map[string]string{"data_standards": "dataStandards"},
+		OutputOnlyAttrs:     map[string]bool{},
+		SpreadAttrs:         map[string]bool{},
+		CreateWritableAttrs: map[string]bool{"data_standards": true},
+		UpdateWritableAttrs: map[string]bool{"data_standards": true},
 	}
 }

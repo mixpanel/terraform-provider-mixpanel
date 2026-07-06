@@ -39,3 +39,26 @@ resource "mixpanel_user_project_role" "alice_analyst" {
 ### Read-Only
 
 - `id` (String) Synthetic composite identity: "<organization_id>:<key>".
+
+## Numeric ids in the payload
+
+The `add-users-to-projects` endpoint requires project/user ids to be JSON
+**numbers**; string ids cause a server 500. Because HCL string interpolation
+(`"${var.project_id}"`) renders ids as strings inside `jsonencode`, the
+provider automatically coerces every `id` field in the payload whose value is
+a canonical decimal string (`"12345"`) into a JSON number before sending it.
+Non-numeric ids and every other field are passed through verbatim:
+
+```terraform
+resource "mixpanel_user_project_role" "alice_analyst" {
+  key = "alice@example.com"
+  payload = jsonencode({
+    projects = [
+      {
+        id    = var.project_id # number or numeric string — both reach the wire as a number
+        users = [{ email = "alice@example.com", role = "analyst" }]
+      }
+    ]
+  })
+}
+```

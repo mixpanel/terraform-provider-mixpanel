@@ -9,13 +9,15 @@ import "github.com/mixpanel/terraform-provider-mixpanel/internal/client"
 // by the data_group resource and data source.
 func DataGroupAttrSpec() client.AttrSpec {
 	return client.AttrSpec{
-		IDAttr:            "data_group_id",
-		ProjectIDAttr:     "project_id",
-		PathParamAttrs:    map[string]bool{},
-		JSONEncodeAttrs:   map[string]bool{},
-		JSONStringAttrs:   map[string]bool{},
-		JSONEncodeWireKey: map[string]string{},
-		OutputOnlyAttrs:   map[string]bool{"created_at": true, "is_ready": true, "ready_at": true, "type": true},
-		SpreadAttrs:       map[string]bool{},
+		IDAttr:              "data_group_id",
+		ProjectIDAttr:       "project_id",
+		PathParamAttrs:      map[string]bool{},
+		JSONEncodeAttrs:     map[string]bool{},
+		JSONStringAttrs:     map[string]bool{},
+		JSONEncodeWireKey:   map[string]string{"created_at": "created_at", "data_group_id": "data_group_id", "display_name": "display_name", "is_ready": "is_ready", "property_name": "property_name", "ready_at": "ready_at"},
+		OutputOnlyAttrs:     map[string]bool{"created_at": true, "is_ready": true, "ready_at": true, "type": true},
+		SpreadAttrs:         map[string]bool{},
+		CreateWritableAttrs: map[string]bool{"display_name": true, "metadata": true, "property_name": true},
+		UpdateWritableAttrs: map[string]bool{"display_name": true},
 	}
 }

@@ -9,6 +9,13 @@ description: |-
 
 Manages a Mixpanel event definition (Lexicon event entry).
 
+-> **Routing note.** Unlike most Lexicon (data-definitions) endpoints, the
+`event-definitions` API is mounted only under the project path
+(`/api/app/projects/{project_id}/event-definitions`); Mixpanel exposes no
+workspace-scoped variant for it. The provider therefore always uses the
+project path for this resource, regardless of whether the project has
+workspaces.
+
 ## Example Usage
 
 ```terraform

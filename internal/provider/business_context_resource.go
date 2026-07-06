@@ -89,7 +89,7 @@ func (r *BusinessContextResource) Create(ctx context.Context, req resource.Creat
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding business_context request", err.Error())
 		return
@@ -111,7 +111,7 @@ func (r *BusinessContextResource) Create(ctx context.Context, req resource.Creat
 	}
 	wire = wrapSingleton(wire, "")
 	// synthetic id = project id (a project singleton has one settings object).
-	r.writeBusinessContextState(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, projectID)
+	r.writeBusinessContextState(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, projectID)
 }
 
 func (r *BusinessContextResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -136,7 +136,7 @@ func (r *BusinessContextResource) Read(ctx context.Context, req resource.ReadReq
 	}
 	wire = wrapSingleton(wire, "")
 	// synthetic id = project id (a project singleton has one settings object).
-	r.writeBusinessContextState(ctx, &resp.State, &resp.Diagnostics, req.State.Raw, wire, projectID, projectID)
+	r.writeBusinessContextState(ctx, &resp.State, &resp.Diagnostics, client.MergeRead, req.State.Raw, wire, projectID, projectID)
 }
 
 func (r *BusinessContextResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -146,7 +146,7 @@ func (r *BusinessContextResource) Update(ctx context.Context, req resource.Updat
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForUpdate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding business_context request", err.Error())
 		return
@@ -166,7 +166,7 @@ func (r *BusinessContextResource) Update(ctx context.Context, req resource.Updat
 		return
 	}
 	wire = wrapSingleton(wire, "")
-	r.writeBusinessContextState(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, projectID)
+	r.writeBusinessContextState(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, projectID)
 }
 
 func (r *BusinessContextResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -189,11 +189,12 @@ func (r *BusinessContextResource) ImportState(ctx context.Context, req resource.
 	setImportID(ctx, &resp.State, &resp.Diagnostics, "project_id", req.ID, "int64")
 }
 
-// writeBusinessContextState turns an unwrapped API body into resource state. base is the
-// planned raw value (req.Plan.Raw) on create/update so config-supplied values are
-// preserved verbatim, or a null tftypes.Value on read (state is rebuilt from the
-// API response alone). See client.RawFromWireMerged for the merge semantics.
-func (r *BusinessContextResource) writeBusinessContextState(ctx context.Context, state *tfsdk.State, diags *diagAppender, base tftypes.Value, wire map[string]any, projectID, id string) {
+// writeBusinessContextState turns an unwrapped API body into resource state. On
+// create/update (client.MergeApply, base = req.Plan.Raw) config-supplied values
+// are preserved verbatim; on read (client.MergeRead, base = req.State.Raw) the
+// API response wins wherever it carries a field, so drift is refreshed into
+// state. See client.RawFromWireMerged for the exact merge semantics.
+func (r *BusinessContextResource) writeBusinessContextState(ctx context.Context, state *tfsdk.State, diags *diagAppender, mode client.MergeMode, base tftypes.Value, wire map[string]any, projectID, id string) {
 	extras := map[string]any{
 		"project_id": id,
 	}
@@ -201,7 +202,7 @@ func (r *BusinessContextResource) writeBusinessContextState(ctx context.Context,
 		extras["project_id"] = projectID
 	}
 	schemaType := state.Schema.Type().TerraformType(ctx)
-	val, err := client.RawFromWireMerged(schemaType, base, wire, extras, BusinessContextAttrSpec())
+	val, err := client.RawFromWireMerged(schemaType, mode, base, wire, extras, BusinessContextAttrSpec())
 	if err != nil {
 		diags.AddError("Building business_context state", err.Error())
 		return

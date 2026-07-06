@@ -46,6 +46,7 @@ func (r *SparkSettingsResource) Schema(ctx context.Context, req resource.SchemaR
 	s := rsc.SparkSettingsResourceSchema(ctx)
 	s.Attributes["id"] = schema.StringAttribute{Computed: true}
 	requireReplace(s.Attributes, "organization_id")
+	normalizedJSON(s.Attributes, "settings")
 	stabilizeComputed(s.Attributes)
 	resp.Schema = s
 }
@@ -94,7 +95,7 @@ func (r *SparkSettingsResource) Create(ctx context.Context, req resource.CreateR
 		resp.Diagnostics.AddError("Resolving scope id", err.Error())
 		return
 	}
-	full, err := client.WireFromRaw(req.Plan.Raw, spec)
+	full, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding spark_settings request", err.Error())
 		return
@@ -121,7 +122,7 @@ func (r *SparkSettingsResource) Create(ctx context.Context, req resource.CreateR
 		return
 	}
 	wire = wrapSingleton(wire, "settings")
-	r.writeSparkSettingsState(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, scopeID, scopeID)
+	r.writeSparkSettingsState(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, scopeID, scopeID)
 }
 
 func (r *SparkSettingsResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -146,7 +147,7 @@ func (r *SparkSettingsResource) Read(ctx context.Context, req resource.ReadReque
 	}
 	wire = wrapSingleton(wire, "settings")
 	// synthetic id = project id (a project singleton has one settings object).
-	r.writeSparkSettingsState(ctx, &resp.State, &resp.Diagnostics, req.State.Raw, wire, projectID, projectID)
+	r.writeSparkSettingsState(ctx, &resp.State, &resp.Diagnostics, client.MergeRead, req.State.Raw, wire, projectID, projectID)
 }
 
 func (r *SparkSettingsResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -156,7 +157,7 @@ func (r *SparkSettingsResource) Update(ctx context.Context, req resource.UpdateR
 		resp.Diagnostics.AddError("Resolving scope id", err.Error())
 		return
 	}
-	full, err := client.WireFromRaw(req.Plan.Raw, spec)
+	full, err := client.WireFromRawForUpdate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding spark_settings request", err.Error())
 		return
@@ -181,7 +182,7 @@ func (r *SparkSettingsResource) Update(ctx context.Context, req resource.UpdateR
 		return
 	}
 	wire = wrapSingleton(wire, "settings")
-	r.writeSparkSettingsState(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, scopeID, scopeID)
+	r.writeSparkSettingsState(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, scopeID, scopeID)
 }
 
 func (r *SparkSettingsResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -204,11 +205,12 @@ func (r *SparkSettingsResource) ImportState(ctx context.Context, req resource.Im
 	setImportID(ctx, &resp.State, &resp.Diagnostics, "id", req.ID, "string")
 }
 
-// writeSparkSettingsState turns an unwrapped API body into resource state. base is the
-// planned raw value (req.Plan.Raw) on create/update so config-supplied values are
-// preserved verbatim, or a null tftypes.Value on read (state is rebuilt from the
-// API response alone). See client.RawFromWireMerged for the merge semantics.
-func (r *SparkSettingsResource) writeSparkSettingsState(ctx context.Context, state *tfsdk.State, diags *diagAppender, base tftypes.Value, wire map[string]any, projectID, id string) {
+// writeSparkSettingsState turns an unwrapped API body into resource state. On
+// create/update (client.MergeApply, base = req.Plan.Raw) config-supplied values
+// are preserved verbatim; on read (client.MergeRead, base = req.State.Raw) the
+// API response wins wherever it carries a field, so drift is refreshed into
+// state. See client.RawFromWireMerged for the exact merge semantics.
+func (r *SparkSettingsResource) writeSparkSettingsState(ctx context.Context, state *tfsdk.State, diags *diagAppender, mode client.MergeMode, base tftypes.Value, wire map[string]any, projectID, id string) {
 	extras := map[string]any{
 		"id": id,
 	}
@@ -216,7 +218,7 @@ func (r *SparkSettingsResource) writeSparkSettingsState(ctx context.Context, sta
 		extras["organization_id"] = projectID
 	}
 	schemaType := state.Schema.Type().TerraformType(ctx)
-	val, err := client.RawFromWireMerged(schemaType, base, wire, extras, SparkSettingsAttrSpec())
+	val, err := client.RawFromWireMerged(schemaType, mode, base, wire, extras, SparkSettingsAttrSpec())
 	if err != nil {
 		diags.AddError("Building spark_settings state", err.Error())
 		return

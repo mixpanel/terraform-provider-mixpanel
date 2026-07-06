@@ -17,5 +17,9 @@ func SparkSettingsAttrSpec() client.AttrSpec {
 		JSONEncodeWireKey: map[string]string{},
 		OutputOnlyAttrs:   map[string]bool{},
 		SpreadAttrs:       map[string]bool{},
+		// Writable-field allowlists deliberately EMPTY (filtering bypassed):
+		// body is the inner `settings` object; the top-level filter does not apply.
+		CreateWritableAttrs: map[string]bool{},
+		UpdateWritableAttrs: map[string]bool{},
 	}
 }

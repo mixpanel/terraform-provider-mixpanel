@@ -9,13 +9,15 @@ import "github.com/mixpanel/terraform-provider-mixpanel/internal/client"
 // by the heat_map_collection resource and data source.
 func HeatMapCollectionAttrSpec() client.AttrSpec {
 	return client.AttrSpec{
-		IDAttr:            "id",
-		ProjectIDAttr:     "project_id",
-		PathParamAttrs:    map[string]bool{"heat_map_collection_id": true},
-		JSONEncodeAttrs:   map[string]bool{"heat_maps": true},
-		JSONStringAttrs:   map[string]bool{},
-		JSONEncodeWireKey: map[string]string{},
-		OutputOnlyAttrs:   map[string]bool{"allow_staff_override": true, "can_pin": true, "can_share": true, "can_update_basic": true, "can_view": true, "is_shared_with_project": true, "is_superadmin": true, "last_modified_by_email": true, "last_modified_by_id": true, "last_modified_by_name": true},
-		SpreadAttrs:       map[string]bool{},
+		IDAttr:              "id",
+		ProjectIDAttr:       "project_id",
+		PathParamAttrs:      map[string]bool{"heat_map_collection_id": true},
+		JSONEncodeAttrs:     map[string]bool{"heat_maps": true},
+		JSONStringAttrs:     map[string]bool{},
+		JSONEncodeWireKey:   map[string]string{"allow_staff_override": "allow_staff_override", "can_pin": "can_pin", "can_share": "can_share", "can_update_basic": "can_update_basic", "can_view": "can_view", "dashboard_id": "dashboard_id", "heat_maps": "heat_maps", "is_shared_with_project": "is_shared_with_project", "is_superadmin": "is_superadmin", "last_modified_by_email": "last_modified_by_email", "last_modified_by_id": "last_modified_by_id", "last_modified_by_name": "last_modified_by_name"},
+		OutputOnlyAttrs:     map[string]bool{"allow_staff_override": true, "can_pin": true, "can_share": true, "can_update_basic": true, "can_view": true, "is_shared_with_project": true, "is_superadmin": true, "last_modified_by_email": true, "last_modified_by_id": true, "last_modified_by_name": true},
+		SpreadAttrs:         map[string]bool{},
+		CreateWritableAttrs: map[string]bool{"dashboard_id": true, "description": true, "heat_maps": true, "name": true},
+		UpdateWritableAttrs: map[string]bool{"dashboard_id": true, "description": true, "heat_maps": true, "name": true},
 	}
 }

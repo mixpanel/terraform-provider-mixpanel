@@ -1,0 +1,163 @@
+name: Acceptance Tests
+
+on:
+  pull_request:
+    paths:
+      - 'internal/**'
+      - 'go.mod'
+      - 'go.sum'
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      resources:
+        description: 'Resource pattern to test (e.g., TestAccCohort, TestAcc, TestAccDashboard)'
+        required: false
+        default: 'TestAcc'
+
+jobs:
+  acceptance-tests:
+    name: Acceptance Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Run different resource types in parallel for faster execution
+        test-suite:
+          - name: cohort
+            pattern: TestAccCohort
+          - name: dashboard
+            pattern: TestAccDashboard
+          - name: bookmark
+            pattern: TestAccBookmark
+          - name: metric
+            pattern: TestAccMetric
+          - name: formula
+            pattern: TestAccFormula
+          - name: feature-flag
+            pattern: TestAccFeatureFlag
+          - name: behavior
+            pattern: TestAccBehavior
+          - name: custom-event
+            pattern: TestAccCustomEvent
+          - name: custom-property
+            pattern: TestAccCustomProperty
+          - name: project
+            pattern: TestAccProject
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: "go.mod"
+          cache: true
+
+      - name: Set up OpenTofu
+        uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1
+        with:
+          tofu_version: "1.12.2"
+          tofu_wrapper: false
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run acceptance tests
+        env:
+          TF_ACC: 1
+          MIXPANEL_SERVICE_ACCOUNT: ${{ secrets.MIXPANEL_SERVICE_ACCOUNT }}
+          MIXPANEL_SERVICE_ACCOUNT_SECRET: ${{ secrets.MIXPANEL_SERVICE_ACCOUNT_SECRET }}
+          MIXPANEL_TEST_PROJECT_POOL: ${{ secrets.MIXPANEL_TEST_PROJECT_POOL }}
+          MIXPANEL_ORGANIZATION_ID: ${{ secrets.MIXPANEL_ORGANIZATION_ID }}
+          MIXPANEL_BASE_URL: ${{ secrets.MIXPANEL_BASE_URL || 'https://mixpanel.com' }}
+          TF_ACC_PROVIDER_HOST: registry.opentofu.org
+          TF_ACC_PROVIDER_NAMESPACE: hashicorp
+        run: |
+          export TF_ACC_TERRAFORM_PATH="$(command -v tofu)"
+          PATTERN="${{ github.event.inputs.resources || matrix.test-suite.pattern }}"
+          go test -v -timeout 30m ./internal/provider -run "$PATTERN"
+
+  # Smoke test that runs a subset of tests on every PR
+  smoke-test:
+    name: Smoke Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: "go.mod"
+          cache: true
+
+      - name: Set up OpenTofu
+        uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1
+        with:
+          tofu_version: "1.12.2"
+          tofu_wrapper: false
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run smoke tests
+        env:
+          TF_ACC: 1
+          MIXPANEL_SERVICE_ACCOUNT: ${{ secrets.MIXPANEL_SERVICE_ACCOUNT }}
+          MIXPANEL_SERVICE_ACCOUNT_SECRET: ${{ secrets.MIXPANEL_SERVICE_ACCOUNT_SECRET }}
+          MIXPANEL_PROJECT_ID: ${{ secrets.MIXPANEL_TEST_PROJECT_POOL }}
+          MIXPANEL_ORGANIZATION_ID: ${{ secrets.MIXPANEL_ORGANIZATION_ID }}
+          TF_ACC_PROVIDER_HOST: registry.opentofu.org
+          TF_ACC_PROVIDER_NAMESPACE: hashicorp
+        run: |
+          export TF_ACC_TERRAFORM_PATH="$(command -v tofu)"
+          # Run just the basic tests for quick feedback
+          go test -v -timeout 10m ./internal/provider -run 'TestAccCohort_basic|TestAccDashboard_basic|TestAccMetric_basic'
+
+  # Full test suite that runs all tests sequentially (for release verification)
+  full-test-suite:
+    name: Full Test Suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: "go.mod"
+          cache: true
+
+      - name: Set up OpenTofu
+        uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1
+        with:
+          tofu_version: "1.12.2"
+          tofu_wrapper: false
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run all acceptance tests
+        env:
+          TF_ACC: 1
+          MIXPANEL_SERVICE_ACCOUNT: ${{ secrets.MIXPANEL_SERVICE_ACCOUNT }}
+          MIXPANEL_SERVICE_ACCOUNT_SECRET: ${{ secrets.MIXPANEL_SERVICE_ACCOUNT_SECRET }}
+          MIXPANEL_TEST_PROJECT_POOL: ${{ secrets.MIXPANEL_TEST_PROJECT_POOL }}
+          MIXPANEL_ORGANIZATION_ID: ${{ secrets.MIXPANEL_ORGANIZATION_ID }}
+          TF_ACC_PROVIDER_HOST: registry.opentofu.org
+          TF_ACC_PROVIDER_NAMESPACE: hashicorp
+        run: |
+          export TF_ACC_TERRAFORM_PATH="$(command -v tofu)"
+          go test -v -timeout 60m -parallel 4 ./internal/provider -run TestAcc
+

@@ -1,4 +1,8 @@
-// Code generated stub by gen_stubs.py — provider resource/data-source registry.
+// Hand-maintained provider resource/data-source registry. Originally
+// bootstrapped by a gen_stubs.py script that is no longer part of the
+// generation pipeline; gen/crudgen.py (driven by gen/regen.sh, see
+// gen/README.md) does NOT touch this file — add the constructor for each new
+// entity here by hand.
 
 package provider
 
@@ -35,12 +39,15 @@ func providerResources() []func() resource.Resource {
 		NewHeatMapResource,
 		NewHeatMapCollectionResource,
 		NewLexiconTagResource,
+		NewLookupTableResource,
 		NewMetricResource,
 		NewOrgRequestAccessSettingsResource,
 		NewOrgSessionSettingsResource,
 		NewPlaylistResource,
 		NewProjectResource,
+		NewPropertyDefinitionResource,
 		NewRollupProjectResource,
+		NewServiceAccountProjectResource,
 		NewServiceAccountResource,
 		NewSparkSettingsResource,
 		NewTeamResource,
@@ -80,6 +87,7 @@ func providerDataSources() []func() datasource.DataSource {
 		NewOrgSessionSettingsDataSource,
 		NewPlaylistDataSource,
 		NewProjectOutgoingIntegrationDataSource,
+		NewPropertyDefinitionDataSource,
 		NewRollupProjectDataSource,
 		NewServiceAccountDataSource,
 		NewSparkSettingsDataSource,
@@ -88,7 +96,7 @@ func providerDataSources() []func() datasource.DataSource {
 		NewTwofactorSettingsDataSource,
 		NewWarehouseSourceDataSource,
 		NewWorkspaceDataSource,
-		// Plural "list" data sources (GREEN-10): bulk id + composite import-id discovery.
+		// Plural "list" data sources (GREEN-12): bulk id + composite import-id discovery.
 		NewAgentFlowListDataSource,
 		NewAnnotationListDataSource,
 		NewCohortListDataSource,

@@ -8,16 +8,47 @@ description: |-
 
 # mixpanel_project (Resource)
 
+Manages a Mixpanel project within an organization. Requires an
+organization-admin service account.
 
+~> **Destroying this resource deletes the project and ALL of its analytics
+data.** `terraform destroy` (or any plan that replaces the resource) calls the
+project delete RPC. Always guard project resources with
+`lifecycle { prevent_destroy = true }`.
+
+## Renaming
+
+`name` is updated **in place**: the provider performs the rename through the
+same endpoint the Mixpanel webapp uses (`POST /projects/update/{id}/`), so
+changing `name` in config renames the project without destroying it or its
+data. The service account needs project-edit permission (project owner, or
+organization owner/admin).
+
+`organization_id` cannot be changed in place — changing it plans a
+destroy-and-recreate, which deletes the project's data. To move a project
+between organizations, use the Mixpanel webapp's transfer flow, then update
+the config and re-import.
 
 ## Example Usage
 
 ```terraform
 # A project within an organization. Requires an organization-admin service
-# account. `name` forces replacement.
+# account.
+#
+# `name` is updated IN PLACE (the provider calls the same rename endpoint the
+# Mixpanel webapp uses), so changing it in config renames the project without
+# touching its data.
 resource "mixpanel_project" "new" {
   organization_id = 7654321
   name            = "my-new-project"
+
+  # IMPORTANT: destroying this resource DELETES the Mixpanel project and ALL
+  # of its analytics data. prevent_destroy protects against accidental
+  # deletion (e.g. removing the block, or changing the ForceNew
+  # organization_id, which plans a destroy+recreate).
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 ```
 

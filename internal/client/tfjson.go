@@ -7,6 +7,37 @@
 // without per-attribute code. The per-entity resource/data-source files only
 // supply small descriptors (which keys are synthetic, which are jsonencode
 // passthroughs); all the heavy lifting lives here and is hand-written/audited.
+//
+// # Read vs apply merge semantics (drift detection)
+//
+// State after an API call is built by RawFromWireMerged, which overlays the
+// API response onto a base value. The MergeMode decides who wins per
+// top-level attribute:
+//
+//   - MergeApply (Create/Update, base = req.Plan.Raw): a fully-known,
+//     non-null PLANNED value is preserved verbatim, keeping Terraform's
+//     "planned value must equal applied value" contract even when the API
+//     does not echo the field back. The one exception is jsonencode
+//     attributes: when the response carries the field, the wire value wins
+//     (the server may normalize or enrich the JSON); spurious diffs from
+//     re-rendering are absorbed by jsontypes.Normalized semantic equality at
+//     the framework level.
+//
+//   - MergeRead (Read/refresh, base = req.State.Raw): the WIRE value wins
+//     whenever the response carries the field, so out-of-band edits are
+//     refreshed into state and `terraform plan` surfaces the drift. The
+//     prior state value is kept ONLY when the response omits the field or
+//     returns JSON null — the documented echo gaps: fields the API never
+//     returns on GET (form-encoded echoes, write-only secrets), spread
+//     attributes (never echoed verbatim), and partial reads (custom_alert).
+//     A wire value whose JSON shape cannot be converted to the schema type
+//     also falls back to the prior value (refresh degrades to
+//     no-drift-visible for that attribute instead of failing the whole
+//     Read against a live-API shape surprise).
+//
+// Identity / synthetic attributes supplied via extras always win in both
+// modes (they carry path params, resolved project ids, and lifecycle values
+// such as a feature flag's desired_state derived from the response).
 package client
 
 import (
@@ -14,6 +45,7 @@ import (
 	"fmt"
 	"math/big"
 	"sort"
+	"strconv"
 
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 )
@@ -76,6 +108,28 @@ type AttrSpec struct {
 	// schema is the flat response), so they are preserved from prior plan/state by
 	// the merge-base read path like any other jsonencode passthrough.
 	SpreadAttrs map[string]bool
+
+	// CreateWritableAttrs is the allowlist of writable fields for CREATE requests,
+	// extracted from the entity's server-side create request schema (the webapp's
+	// voluptuous/Pydantic validators, frozen into the OpenAPI spec the generator
+	// consumes). Keys are Terraform attribute names (snake_case). When non-empty,
+	// WireFromRawForCreate filters the body to include ONLY these attributes.
+	// jsonencode container attributes (e.g. "groups", "definition") MUST be listed
+	// here when writable — they are filtered like any other attribute. Fixes the
+	// full-body write bug where read-only fields from a GET response are sent in a
+	// create and rejected as 400 by extra="forbid" validators.
+	//
+	// Entities whose request body is polymorphic/opaque (SpreadAttrs set, settings
+	// passthroughs, proxied services) must leave both allowlists EMPTY, which
+	// bypasses filtering entirely.
+	CreateWritableAttrs map[string]bool
+
+	// UpdateWritableAttrs is the allowlist of writable fields for UPDATE requests,
+	// extracted from the entity's server-side update request schema. Same
+	// semantics as CreateWritableAttrs, applied by WireFromRawForUpdate. Fixes the
+	// full-body PATCH bug where read-only fields from a GET response are sent in
+	// an update and rejected as 400.
+	UpdateWritableAttrs map[string]bool
 }
 
 // wireKey returns the JSON wire key for a schema attribute name. An explicit
@@ -199,6 +253,78 @@ func WireFromRaw(raw tftypes.Value, spec AttrSpec) (map[string]any, error) {
 	return out, nil
 }
 
+// WireFromRawForCreate converts a Plan raw object into a wire body, filtering to
+// only include writable fields from the create request schema allowlist (when
+// non-empty). Fixes the full-body PATCH bug where read-only fields from a GET
+// response are sent in a create and rejected as 400.
+func WireFromRawForCreate(raw tftypes.Value, spec AttrSpec) (map[string]any, error) {
+	body, err := WireFromRaw(raw, spec)
+	if err != nil {
+		return nil, err
+	}
+	if len(spec.CreateWritableAttrs) == 0 || len(spec.SpreadAttrs) > 0 {
+		// No allowlist: accept all fields (entity has no resolvable create schema,
+		// or its body is deliberately unfiltered). Spread entities are ALWAYS
+		// bypassed: their body root carries variant-specific keys flattened out of
+		// a jsonencode attr that a TF-attr-keyed allowlist cannot describe.
+		return body, nil
+	}
+	return filterWritableFields(body, spec, spec.CreateWritableAttrs), nil
+}
+
+// WireFromRawForUpdate converts a Plan raw object into a wire body, filtering to
+// only include writable fields from the update request schema allowlist (when
+// non-empty). Fixes the full-body PATCH bug where read-only fields from a GET
+// response are sent in an update and rejected as 400.
+func WireFromRawForUpdate(raw tftypes.Value, spec AttrSpec) (map[string]any, error) {
+	body, err := WireFromRaw(raw, spec)
+	if err != nil {
+		return nil, err
+	}
+	if len(spec.UpdateWritableAttrs) == 0 || len(spec.SpreadAttrs) > 0 {
+		// No allowlist: accept all fields (entity has no resolvable update schema,
+		// or its body is deliberately unfiltered). Spread entities are ALWAYS
+		// bypassed: their body root carries variant-specific keys flattened out of
+		// a jsonencode attr that a TF-attr-keyed allowlist cannot describe.
+		return body, nil
+	}
+	return filterWritableFields(body, spec, spec.UpdateWritableAttrs), nil
+}
+
+// filterWritableFields filters a wire body to include only fields from the
+// writable allowlist (the server's request schema properties). The allowlist is
+// checked against Terraform attribute names (snake_case); each body key is
+// reverse-mapped through wireKey() so camelCase API fields resolve back to
+// their TF attr. Jsonencode/jsonstring container attributes are filtered like
+// any other attribute — a writable container (e.g. cohort "groups", metric
+// "definition") must be in the allowlist, and a computed jsonencode echo (e.g.
+// bookmark "metadata", annotation "user") is dropped when it is not. Spread
+// entities never reach this function (WireFromRawFor* bypasses them).
+func filterWritableFields(body map[string]any, spec AttrSpec, allowlist map[string]bool) map[string]any {
+	out := make(map[string]any, len(body))
+	for wireKey, val := range body {
+		// Find the TF attr name that produced this wire key. We need to reverse
+		// the wireKey() mapping to check against the allowlist (which is keyed by
+		// snake_case TF attr names). Check the JSONEncodeWireKey map first (the
+		// explicit wire-key aliases), then fall back to verbatim match.
+		tfAttr := ""
+		for attr, wk := range spec.JSONEncodeWireKey {
+			if wk == wireKey {
+				tfAttr = attr
+				break
+			}
+		}
+		if tfAttr == "" {
+			// No explicit alias: the TF attr name equals the wire key (verbatim).
+			tfAttr = wireKey
+		}
+		if allowlist[tfAttr] {
+			out[wireKey] = val
+		}
+	}
+	return out
+}
+
 // nativeFromTF recursively converts a tftypes.Value into a native Go value
 // (map/slice/string/float64/bool/nil) suitable for json.Marshal.
 func nativeFromTF(v tftypes.Value) (any, error) {
@@ -291,6 +417,10 @@ func nativeFromTF(v tftypes.Value) (any, error) {
 // response map. project_id / path-param values come from extras (so the state
 // retains the user-provided identity), jsonencode attributes are re-encoded back
 // into strings, and any schema attribute absent from the response becomes null.
+//
+// This function is used by data sources, where state is rebuilt from the API
+// response alone. Resources use RawFromWireMerged (MergeRead for Read,
+// MergeApply for Create/Update).
 func RawFromWire(schemaType tftypes.Type, wire map[string]any, extras map[string]any, spec AttrSpec) (tftypes.Value, error) {
 	obj, ok := schemaType.(tftypes.Object)
 	if !ok {
@@ -321,30 +451,67 @@ func RawFromWire(schemaType tftypes.Type, wire map[string]any, extras map[string
 	return tftypes.NewValue(obj, vals), nil
 }
 
-// RawFromWireMerged builds resource state after a create/update by overlaying the
-// API response onto the planned value. For every top-level schema attribute:
+// MergeMode selects how RawFromWireMerged arbitrates between the base value
+// (the plan on Create/Update, the prior state on Read) and the API response.
+type MergeMode int
+
+const (
+	// MergeApply is the Create/Update mode (base = req.Plan.Raw): a
+	// fully-known, non-null planned value is preserved verbatim — keeping
+	// Terraform's "planned value must equal applied value" contract for
+	// attributes the API does not echo back — EXCEPT jsonencode attributes,
+	// which are refreshed from the wire whenever the response carries the
+	// field (the server may normalize/enrich the JSON; jsontypes.Normalized
+	// semantic equality absorbs no-op re-renderings at the framework level).
+	MergeApply MergeMode = iota
+	// MergeRead is the Read/refresh mode (base = req.State.Raw): the wire
+	// value wins whenever the response carries the field, so out-of-band
+	// changes become visible to `terraform plan`. The prior state value is
+	// kept ONLY when the response omits the field or returns JSON null (the
+	// documented echo gaps: fields never returned on GET, write-only
+	// secrets, spread attributes, partial reads), or when the wire shape
+	// cannot be converted to the schema type (refresh degrades gracefully
+	// instead of failing the Read).
+	MergeRead
+)
+
+// RawFromWireMerged builds resource state by overlaying the API response onto
+// a base value (the plan on Create/Update, the prior state on Read). For every
+// top-level schema attribute:
 //
-//   - if the plan carries a KNOWN, non-null value, that value is preserved (this
+//   - identity / synthetic attributes present in extras always come from
+//     extras (path params, resolved project ids, lifecycle values derived
+//     from the response such as a feature flag's desired_state);
+//
+//   - in MergeApply mode, a KNOWN, non-null planned value is preserved (this
 //     keeps Terraform's "planned value must equal applied value" contract for
-//     Required/Optional attributes, and for Optional+Computed attributes the user
-//     set explicitly — even when the API does not echo the field back, or echoes
-//     it back enriched with server-assigned sub-fields such as a subscription id);
-//   - otherwise (plan value null or unknown, e.g. a Computed-only id or an unset
-//     Optional+Computed attribute) the value is taken from the API response, with
-//     identity / path-param values sourced from extras as in RawFromWire.
+//     Required/Optional attributes, and for Optional+Computed attributes the
+//     user set explicitly — even when the API does not echo the field back, or
+//     echoes it back enriched with server-assigned sub-fields such as a
+//     subscription id). jsonencode attributes are the exception: the wire
+//     value wins when the response carries the field;
 //
-// Read has no plan to merge against and continues to use RawFromWire (passing a
-// null base here degrades to exactly that behaviour).
-func RawFromWireMerged(schemaType tftypes.Type, base tftypes.Value, wire map[string]any, extras map[string]any, spec AttrSpec) (tftypes.Value, error) {
+//   - in MergeRead mode, the wire value wins whenever the response carries
+//     the field (drift detection); the prior state value is kept only when
+//     the response omits the field / returns null, or when the wire shape
+//     does not convert to the schema type;
+//
+//   - otherwise (base value null or unknown, e.g. a Computed-only id or an
+//     unset Optional+Computed attribute) the value is taken from the API
+//     response, with identity / path-param values sourced from extras as in
+//     RawFromWire, and becomes null when the response omits it.
+//
+// See the package documentation for the full read-vs-apply semantics.
+func RawFromWireMerged(schemaType tftypes.Type, mode MergeMode, base tftypes.Value, wire map[string]any, extras map[string]any, spec AttrSpec) (tftypes.Value, error) {
 	obj, ok := schemaType.(tftypes.Object)
 	if !ok {
 		return tftypes.Value{}, fmt.Errorf("schema root is not an object: %s", schemaType.String())
 	}
-	// Decode the planned object so we can read per-attribute plan values.
-	planAttrs := map[string]tftypes.Value{}
+	// Decode the base object so we can read per-attribute base values.
+	baseAttrs := map[string]tftypes.Value{}
 	if !base.IsNull() && base.IsKnown() {
-		if err := base.As(&planAttrs); err != nil {
-			return tftypes.Value{}, fmt.Errorf("decoding plan object: %w", err)
+		if err := base.As(&baseAttrs); err != nil {
+			return tftypes.Value{}, fmt.Errorf("decoding base object: %w", err)
 		}
 	}
 	vals := make(map[string]tftypes.Value, len(obj.AttributeTypes))
@@ -358,26 +525,57 @@ func RawFromWireMerged(schemaType tftypes.Type, base tftypes.Value, wire map[str
 			vals[name] = tv
 			continue
 		}
-		// Preserve a non-null planned value verbatim, but ONLY when it is fully
-		// known (no nested unknowns). A container attribute (object/list) whose
-		// leaves are Computed (e.g. ruleset.variants[].is_sticky / screenshot) is
+		// Check if the wire response includes this attribute. A JSON null is
+		// treated as absent in BOTH modes: several endpoints return null for
+		// fields they accept but do not store per-entity, and nulling a
+		// user-set value on that signal would manufacture permanent diffs.
+		wireValue, wireHasValue := wire[spec.wireKey(name)]
+		wirePresent := wireHasValue && wireValue != nil
+
+		// A base value is only usable when non-null AND fully known (no nested
+		// unknowns). A container attribute (object/list) whose leaves are
+		// Computed (e.g. ruleset.variants[].is_sticky / screenshot) is
 		// IsKnown()==true at the top even while those leaves are still unknown
-		// "(known after apply)"; preserving it verbatim would leave the unknowns
-		// in state and trip Terraform's "invalid result object after apply" check.
-		// Falling through rebuilds the attribute from the API response, which has
-		// the server-resolved values.
-		if pv, present := planAttrs[name]; present && !pv.IsNull() && fullyKnown(pv) {
-			vals[name] = pv
-			continue
+		// "(known after apply)"; preserving it verbatim would leave the
+		// unknowns in state and trip Terraform's "invalid result object after
+		// apply" check. Falling through rebuilds the attribute from the API
+		// response, which has the server-resolved values.
+		pv, haveBase := baseAttrs[name]
+		baseUsable := haveBase && !pv.IsNull() && fullyKnown(pv)
+		if baseUsable {
+			switch mode {
+			case MergeRead:
+				// Wire-preferred: the base (prior state) survives only when the
+				// wire omits the field.
+				if !wirePresent {
+					vals[name] = pv
+					continue
+				}
+			default: // MergeApply
+				// Plan-preferred: the planned value survives, except a
+				// jsonencode attribute the response carries (the server may
+				// normalize/enrich the JSON; the wire is authoritative there).
+				if !spec.JSONEncodeAttrs[name] || !wirePresent {
+					vals[name] = pv
+					continue
+				}
+			}
 		}
-		// Otherwise fill from the API response (null when absent).
-		raw, present := wire[spec.wireKey(name)]
-		if !present || raw == nil {
+		// Fill from the API response (null when absent).
+		if !wirePresent {
 			vals[name] = tftypes.NewValue(at, nil)
 			continue
 		}
-		tv, err := tfFromNative(at, raw, spec.JSONEncodeAttrs[name])
+		tv, err := tfFromNative(at, wireValue, spec.JSONEncodeAttrs[name])
 		if err != nil {
+			if mode == MergeRead && baseUsable {
+				// The GET echoed a shape the schema cannot hold (e.g. a field
+				// enriched into an object where the schema has a string). Keep
+				// the prior value: drift on this attribute stays invisible, but
+				// the refresh — and every other attribute's drift — succeeds.
+				vals[name] = pv
+				continue
+			}
 			return tftypes.Value{}, fmt.Errorf("attr %q: %w", name, err)
 		}
 		vals[name] = tv
@@ -425,6 +623,13 @@ func fullyKnown(v tftypes.Value) bool {
 // tfFromNative converts a native Go JSON value into a tftypes.Value of type t.
 // When jsonEncode is true, the native value is marshalled to a JSON string and
 // stored as a tftypes string (the jsonencode passthrough representation).
+//
+// A wire value whose JSON type does not match the schema type is an ERROR, not
+// a silent null: nulling a mismatched value would erase real server data from
+// state with no signal (and a null on a Computed attribute reads as "the server
+// cleared this"). The only deliberate exceptions are string targets (numeric-ish
+// ids are coerced to their string rendering) and empty-string numeric extras
+// (identity extras flow in as strings and an empty id means "absent").
 func tfFromNative(t tftypes.Type, v any, jsonEncode bool) (tftypes.Value, error) {
 	if jsonEncode {
 		if v == nil {
@@ -450,15 +655,38 @@ func tfFromNative(t tftypes.Type, v any, jsonEncode bool) (tftypes.Value, error)
 			return tftypes.NewValue(tftypes.String, fmt.Sprintf("%v", v)), nil
 		}
 	case t.Is(tftypes.Bool):
-		b, ok := v.(bool)
-		if !ok {
-			return tftypes.NewValue(t, nil), nil
+		switch b := v.(type) {
+		case bool:
+			return tftypes.NewValue(tftypes.Bool, b), nil
+		case float64:
+			// Django-backed endpoints serialize some boolean columns as 0/1
+			// integers on GET/PUT while the create path returns real JSON
+			// booleans (live-verified 2026-07-03: custom_events "deleted" is
+			// false on create but 0/1 on read). Coerce exactly 0 and 1; any
+			// other number is still a schema mismatch.
+			if b == 0 {
+				return tftypes.NewValue(tftypes.Bool, false), nil
+			}
+			if b == 1 {
+				return tftypes.NewValue(tftypes.Bool, true), nil
+			}
+			return tftypes.Value{}, fmt.Errorf("expected a JSON boolean for a bool attribute, got %T (%v)", v, v)
+		case int64:
+			if b == 0 || b == 1 {
+				return tftypes.NewValue(tftypes.Bool, b == 1), nil
+			}
+			return tftypes.Value{}, fmt.Errorf("expected a JSON boolean for a bool attribute, got %T (%v)", v, v)
+		default:
+			return tftypes.Value{}, fmt.Errorf("expected a JSON boolean for a bool attribute, got %T (%v)", v, v)
 		}
-		return tftypes.NewValue(tftypes.Bool, b), nil
 	case t.Is(tftypes.Number):
 		switch n := v.(type) {
 		case float64:
 			return tftypes.NewValue(tftypes.Number, big.NewFloat(n)), nil
+		case int64:
+			// Large integer IDs preserved as int64 by normalizeNumbers to avoid
+			// precision loss above 2^53. Convert exactly to big.Float.
+			return tftypes.NewValue(tftypes.Number, new(big.Float).SetInt64(n)), nil
 		case json.Number:
 			f, _, err := big.ParseFloat(n.String(), 10, 512, big.ToNearestEven)
 			if err != nil {
@@ -470,13 +698,18 @@ func tfFromNative(t tftypes.Type, v any, jsonEncode bool) (tftypes.Value, error)
 		case string:
 			// Identity values flow in from extras as strings even when the schema
 			// attribute is a Number (e.g. a numeric id rendered for the URL path).
+			// An empty string means "no id yet" and stays null; a non-empty,
+			// non-numeric string is a genuine type mismatch.
+			if n == "" {
+				return tftypes.NewValue(t, nil), nil
+			}
 			f, _, err := big.ParseFloat(n, 10, 512, big.ToNearestEven)
 			if err != nil {
-				return tftypes.NewValue(t, nil), nil
+				return tftypes.Value{}, fmt.Errorf("expected a numeric value for a number attribute, got string %q", n)
 			}
 			return tftypes.NewValue(tftypes.Number, f), nil
 		default:
-			return tftypes.NewValue(t, nil), nil
+			return tftypes.Value{}, fmt.Errorf("expected a JSON number for a number attribute, got %T (%v)", v, v)
 		}
 	case t.Is(tftypes.DynamicPseudoType):
 		return tftypes.NewValue(t, nil), nil
@@ -486,7 +719,7 @@ func tfFromNative(t tftypes.Type, v any, jsonEncode bool) (tftypes.Value, error)
 	case tftypes.Object:
 		m, ok := v.(map[string]any)
 		if !ok {
-			return tftypes.NewValue(t, nil), nil
+			return tftypes.Value{}, fmt.Errorf("expected a JSON object for an object attribute, got %T (%v)", v, v)
 		}
 		vals := make(map[string]tftypes.Value, len(tt.AttributeTypes))
 		for name, at := range tt.AttributeTypes {
@@ -505,7 +738,7 @@ func tfFromNative(t tftypes.Type, v any, jsonEncode bool) (tftypes.Value, error)
 	case tftypes.Map:
 		m, ok := v.(map[string]any)
 		if !ok {
-			return tftypes.NewValue(t, nil), nil
+			return tftypes.Value{}, fmt.Errorf("expected a JSON object for a map attribute, got %T (%v)", v, v)
 		}
 		vals := make(map[string]tftypes.Value, len(m))
 		for k, ev := range m {
@@ -519,7 +752,7 @@ func tfFromNative(t tftypes.Type, v any, jsonEncode bool) (tftypes.Value, error)
 	case tftypes.List:
 		arr, ok := v.([]any)
 		if !ok {
-			return tftypes.NewValue(t, nil), nil
+			return tftypes.Value{}, fmt.Errorf("expected a JSON array for a list attribute, got %T (%v)", v, v)
 		}
 		vals := make([]tftypes.Value, 0, len(arr))
 		for _, ev := range arr {
@@ -533,7 +766,7 @@ func tfFromNative(t tftypes.Type, v any, jsonEncode bool) (tftypes.Value, error)
 	case tftypes.Set:
 		arr, ok := v.([]any)
 		if !ok {
-			return tftypes.NewValue(t, nil), nil
+			return tftypes.Value{}, fmt.Errorf("expected a JSON array for a set attribute, got %T (%v)", v, v)
 		}
 		vals := make([]tftypes.Value, 0, len(arr))
 		for _, ev := range arr {
@@ -547,7 +780,7 @@ func tfFromNative(t tftypes.Type, v any, jsonEncode bool) (tftypes.Value, error)
 	case tftypes.Tuple:
 		arr, ok := v.([]any)
 		if !ok {
-			return tftypes.NewValue(t, nil), nil
+			return tftypes.Value{}, fmt.Errorf("expected a JSON array for a tuple attribute, got %T (%v)", v, v)
 		}
 		vals := make([]tftypes.Value, 0, len(tt.ElementTypes))
 		for i, et := range tt.ElementTypes {
@@ -563,7 +796,7 @@ func tfFromNative(t tftypes.Type, v any, jsonEncode bool) (tftypes.Value, error)
 		}
 		return tftypes.NewValue(tt, vals), nil
 	default:
-		return tftypes.NewValue(t, nil), nil
+		return tftypes.Value{}, fmt.Errorf("unsupported schema type %s", t.String())
 	}
 }
 
@@ -577,6 +810,9 @@ func IDFromWire(wire map[string]any, idAttr string) (string, bool) {
 	switch x := v.(type) {
 	case string:
 		return x, true
+	case int64:
+		// Large integer IDs preserved by normalizeNumbers (e.g., dataGroupId > 2^53).
+		return strconv.FormatInt(x, 10), true
 	case float64:
 		return new(big.Float).SetFloat64(x).Text('f', -1), true
 	case json.Number:

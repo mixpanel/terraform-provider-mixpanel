@@ -14,7 +14,15 @@ Design (see internal/client/tfjson.go for the bridge):
   * Schema  = the generated <Entity>ResourceSchema(ctx), with top-level
     jsonencode_fields injected as Optional+Computed types.String attributes
     (they were dropped during framework generation because they are dynamic /
-    oneOf). The id identity attribute is forced Computed.
+    oneOf). Every jsonencode / json-string attribute is then upgraded to
+    jsontypes.Normalized via the normalizedJSON helper (SEMANTIC JSON
+    equality, so wire echoes that re-render the JSON are not diffs). The id
+    identity attribute is forced Computed.
+  * Refresh = state writers take a client.MergeMode: Create/Update pass
+    client.MergeApply (plan-preferred; the planned value is kept when the API
+    omits a field) and Read passes client.MergeRead (wire-preferred; the GET
+    response wins wherever it carries a field, so out-of-band edits surface
+    as drift). See client.RawFromWireMerged.
   * Model   = handled at the tftypes.Value level (req.Plan.Raw / req.State.Raw)
     rather than via the typed <Entity>Model, because the injected jsonencode
     attributes are not present on the generated struct. This keeps a single,
@@ -474,15 +482,17 @@ ID_JSON_PATH = {
 }
 
 # Entities that get a plural "list" data source (mixpanel_<entity>s). Restricted to
-# the GREEN-10: a clean enveloped `results` array whose items each carry the identity
+# the GREEN-12: a clean enveloped `results` array whose items each carry the identity
 # attr. The list path is ent["collection"] (already workspace-resolved for
 # feature_flag via OVERRIDES). import_ids are "<project_id>:<id>" composites that
 # the resource ImportState parser consumes directly.
 LIST_DATASOURCES = {
     "agent_flow",
     "annotation",
+    "cohort",
     "custom_role",
     "custom_property",
+    "custom_event",
     "experiment",
     "feature_flag",
     "custom_alert",
@@ -1000,9 +1010,10 @@ def resolve_entity(name, man, attr_names, attrs=None, merged=None):
     # through verbatim on the wire (a JSON string like "{}"), not decoded into a
     # JSON object. Such fields are emitted as JSONStringAttrs; the remainder are
     # true dynamic-object jsonencode fields (decoded on the way out, re-encoded on
-    # the way in) emitted as JSONEncodeAttrs. (Bug fix: bookmark.params /
-    # bookmark.metadata are format:json-object; decoding them put `{}` on the wire
-    # and the API rejected "{} is not of type 'string'".)
+    # the way in) emitted as JSONEncodeAttrs. The spec type determines the
+    # classification: type:string format:json-object -> JSONStringAttrs (verbatim
+    # passthrough); anyOf:[{},null] or type:object -> JSONEncodeAttrs
+    # (decoded/re-encoded dynamic objects).
     json_string_raw = json_string_fields_for_entity(merged, man, top_jsonencode_raw)
     jsonencode_obj_raw = [f for f in top_jsonencode_raw if f not in json_string_raw]
     jsonstring_obj_raw = [f for f in top_jsonencode_raw if f in json_string_raw]
@@ -1207,6 +1218,182 @@ def wire_key_overrides_from_spec(merged, man):
             overrides[tf_attr] = prop
     return overrides
 
+
+
+# ---------------------------------------------------------------------------
+# Writable-field allowlists (CreateWritableAttrs / UpdateWritableAttrs).
+#
+# The Mixpanel analytics validators are extra="forbid" / explicit-allowlist
+# almost everywhere: echoing read-only fields (id, created, can_*, counts) back
+# at a write endpoint returns 400. The bridge therefore filters create/update
+# bodies through per-entity allowlists derived from the entity's REQUEST
+# schemas in the frozen OpenAPI spec (which mirrors the webapp's voluptuous /
+# Pydantic request validators). Keys are Terraform attribute names.
+# ---------------------------------------------------------------------------
+
+# Entities whose write body must NOT be filtered. Value is the reason emitted
+# as a comment into the generated spec file.
+WRITABLE_BYPASS = {
+    # Spread entities: the body root carries variant-specific keys flattened out
+    # of a jsonencode attr; a TF-attr-keyed allowlist cannot describe them (the
+    # bridge also hard-bypasses filtering whenever SpreadAttrs is non-empty).
+    "warehouse_source": "polymorphic spread body (oneOf source variants flattened from `params`)",
+    # Settings singletons: the POST body is the INNER settings object (the
+    # single `settings` jsonencode attr's decoded value), so a top-level
+    # allowlist keyed by TF attrs cannot describe it. The server validates the
+    # inner fields itself (strict voluptuous schemas in organization/views.py).
+    "org_request_access_settings": "body is the inner `settings` object; the top-level filter does not apply",
+    "org_session_settings": "body is the inner `settings` object; the top-level filter does not apply",
+    "spark_settings": "body is the inner `settings` object; the top-level filter does not apply",
+    "twofactor_settings": "body is the inner `settings` object; the top-level filter does not apply",
+    # RPC-association lifecycle: hand-shaped {name-list}/{id-list} bodies.
+    "project": "RPC lifecycle bodies are hand-shaped (create-projects/delete-projects verbs)",
+}
+
+# Webapp-source-verified corrections that take precedence over the OpenAPI
+# derivation (the deployed voluptuous/manual allowlists diverge from the spec
+# export for these entities). Values are the FINAL Terraform attribute lists.
+# Sources: analytics/webapp/app_api/projects/<entity>/views.py (2026-07 audit).
+WRITABLE_OVERRIDES = {
+    # dashboards/validate.py validate_dashboard_update_fields: PREVENT_EXTRA over
+    # {title, description, filters, breakdowns, is_private, is_restricted,
+    #  card_order, time_filter, layout, content, global_access_type}; only the
+    # attrs that exist in the TF schema are listed. No field is required on
+    # PATCH (voluptuous default required=False).
+    "dashboard": {
+        "update": [
+            "card_order", "description", "filters", "global_access_type",
+            "is_private", "is_restricted", "time_filter", "title",
+        ],
+    },
+    # annotations/views.py PATCH branch: explicit allowlist {description, tags}
+    # (400 on anything else); date/user_id are create-only. The TF schema has no
+    # tags attribute.
+    "annotation": {
+        "update": ["description"],
+    },
+    # dashboard_reports/views.py email_digests_entry PATCH allowlist: 11 fields;
+    # schedule_timezone is create-only (rejected by the PATCH allowlist).
+    "email_digest": {
+        "update": [
+            "dashboard_id", "deleted", "monthly_week_ordinal", "name", "paused",
+            "recipients", "recur", "slack_subscriptions", "start_date", "tag",
+            "timezone",
+        ],
+    },
+    # organizations/service_accounts/views.py: the create JSON schema allows
+    # extras at the top level and the view additionally reads `expires`
+    # (views.py:149), which the frozen CreateServiceAccountRequest omits.
+    "service_account": {
+        "create": ["expires", "projects", "role", "username"],
+    },
+}
+
+
+def _request_body_props(merged, path, method):
+    """Union of top-level property names of the request body schema at
+    (path, method) in the merged OpenAPI spec, resolving $ref/allOf/anyOf/oneOf.
+    Returns None when the operation or its body schema is absent."""
+    if not merged or not path or not method:
+        return None
+    paths = merged.get("paths") or {}
+    # Route OVERRIDES may carry a trailing slash the spec paths lack (or vice
+    # versa); try both spellings.
+    op = None
+    for p in (path, path.rstrip("/"), path.rstrip("/") + "/"):
+        op = (paths.get(p) or {}).get(method)
+        if op:
+            break
+    if not isinstance(op, dict):
+        return None
+    content = ((op.get("requestBody") or {}).get("content")) or {}
+    for cd in content.values():
+        sch = cd.get("schema")
+        if not isinstance(sch, dict):
+            continue
+        schemas = (merged.get("components") or {}).get("schemas") or {}
+        ref = sch.get("$ref")
+        if ref:
+            props = _schema_props(schemas, ref.split("/")[-1])
+        else:
+            props = _props_of(sch, schemas, set())
+        return props or None
+    return None
+
+
+def writable_attr_sets(name, ent, man, merged, attr_names):
+    """Compute (create_writable, update_writable, bypass_reason) for one entity.
+
+    Each returned set contains Terraform attribute names (snake_case) that exist
+    in the entity's schema AND appear in the server's create/update request
+    schema. Wire property names are reverse-mapped through the entity's wire-key
+    overrides (camelCase APIs). Synthetic attributes (identity, scope, path
+    params) are excluded — the bridge strips them upstream. An empty set means
+    "no filtering" (bypass), used when the write surface is opaque or the frozen
+    spec carries no request schema for the operation.
+    """
+    if name in WRITABLE_BYPASS:
+        return set(), set(), WRITABLE_BYPASS[name]
+    if ent["top_spread"]:
+        return set(), set(), "polymorphic spread body"
+
+    # All TF attrs that can appear in a wire body: schema attrs plus injected
+    # jsonencode containers.
+    known = set(attr_names) | set(ent["inject_jsonencode"]) | set(ent["top_jsonencode"])
+    synthetic = {ent["identity_attr"], ent["id_param"], "project_id", "organization_id"}
+    wire_to_tf = {v: k for k, v in ent["wire_key_map"].items()}
+
+    def to_tf(props):
+        if not props:
+            return set()
+        out = set()
+        for p in props:
+            tf = wire_to_tf.get(p, snake(p))
+            if tf in known and tf not in synthetic:
+                out.add(tf)
+        return out
+
+    # Create request body: POST to collection, or POST/PUT to instance (upsert).
+    create_props = None
+    if ent["create_to_instance"]:
+        create_props = _request_body_props(
+            merged, ent["instance"], "post"
+        ) or _request_body_props(merged, ent["instance"], "put")
+    if create_props is None:
+        create_props = _request_body_props(merged, ent["collection"], "post")
+    if create_props is None and ent["instance"]:
+        create_props = _request_body_props(
+            merged, ent["instance"], "post"
+        ) or _request_body_props(merged, ent["instance"], "put")
+    # Some org-scoped/list-routed create schemas are named in the manifest but
+    # their path was pruned; fall back to the named component schema.
+    if create_props is None and man.get("create_req_schema"):
+        schemas = ((merged or {}).get("components") or {}).get("schemas") or {}
+        create_props = _schema_props(schemas, man["create_req_schema"]) or None
+
+    # Update request body: instance path + update verb (collection path for
+    # collection_body_id / singleton entities). Fall back to the create schema
+    # when the spec has no distinct update body (documented: create-shaped
+    # update), corrected by WRITABLE_OVERRIDES where the webapp diverges.
+    update_props = None
+    if ent["update"]:
+        upd_path = ent["instance"] or ent["collection"]
+        if ent["collection_body_id"] or ent["singleton"]:
+            upd_path = ent["collection"]
+        update_props = _request_body_props(merged, upd_path, ent["update"])
+        if update_props is None and ent["instance"] and upd_path != ent["collection"]:
+            update_props = _request_body_props(merged, ent["collection"], ent["update"])
+        if update_props is None:
+            update_props = create_props
+
+    create_w = to_tf(create_props)
+    update_w = to_tf(update_props)
+    ov = WRITABLE_OVERRIDES.get(name, {})
+    if "create" in ov:
+        create_w = set(ov["create"])
+    if "update" in ov:
+        update_w = set(ov["update"])
+    return create_w, update_w, ""
 
 def _prop_schema(schemas, schema_name, prop, _seen=None):
     """Resolve the schema dict for property `prop` within `schema_name`, following
@@ -1432,17 +1619,18 @@ func (r *{cls}Resource) ImportState(ctx context.Context, req resource.ImportStat
 {import_state_body}
 }}
 
-// write{cls}State turns an unwrapped API body into resource state. base is the
-// planned raw value (req.Plan.Raw) on create/update so config-supplied values are
-// preserved verbatim, or a null tftypes.Value on read (state is rebuilt from the
-// API response alone). See client.RawFromWireMerged for the merge semantics.
-func (r *{cls}Resource) write{cls}State(ctx context.Context, state *tfsdk.State, diags *diagAppender, base tftypes.Value, wire map[string]any, projectID, id string) {{
+// write{cls}State turns an unwrapped API body into resource state. On
+// create/update (client.MergeApply, base = req.Plan.Raw) config-supplied values
+// are preserved verbatim; on read (client.MergeRead, base = req.State.Raw) the
+// API response wins wherever it carries a field, so drift is refreshed into
+// state. See client.RawFromWireMerged for the exact merge semantics.
+func (r *{cls}Resource) write{cls}State(ctx context.Context, state *tfsdk.State, diags *diagAppender, mode client.MergeMode, base tftypes.Value, wire map[string]any, projectID, id string) {{
 	extras := map[string]any{{
 		"{identity_attr}": id,
 	}}
 {extras_project}
 	schemaType := state.Schema.Type().TerraformType(ctx)
-	val, err := client.RawFromWireMerged(schemaType, base, wire, extras, {cls}AttrSpec())
+	val, err := client.RawFromWireMerged(schemaType, mode, base, wire, extras, {cls}AttrSpec())
 	if err != nil {{
 		diags.AddError("Building {entity} state", err.Error())
 		return
@@ -1480,7 +1668,7 @@ CREATE_COLLECTION = """	spec := {cls}AttrSpec()
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {{
 		resp.Diagnostics.AddError("Encoding {entity} request", err.Error())
 		return
@@ -1496,7 +1684,7 @@ CREATE_COLLECTION = """	spec := {cls}AttrSpec()
 		return
 	}}
 	id := idFor{cls}(wire)
-	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, id)"""
+	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, id)"""
 
 
 # Client-id UPSERT Create: the identity is supplied by the configuration and the
@@ -1518,7 +1706,7 @@ CREATE_INSTANCE_UPSERT = """	spec := {cls}AttrSpec()
 		resp.Diagnostics.AddError("Creating {entity}", "{identity_attr} must be set in configuration (client-supplied id)")
 		return
 	}}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {{
 		resp.Diagnostics.AddError("Encoding {entity} request", err.Error())
 		return
@@ -1538,7 +1726,7 @@ CREATE_INSTANCE_UPSERT = """	spec := {cls}AttrSpec()
 	if rid := idFor{cls}(wire); rid != "" {{
 		id = rid
 	}}
-	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, id)"""
+	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, id)"""
 
 
 # Read-after-create: POST to the collection, but the create response is a FLAT
@@ -1552,7 +1740,7 @@ CREATE_READ_AFTER = """	spec := {cls}AttrSpec()
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {{
 		resp.Diagnostics.AddError("Encoding {entity} request", err.Error())
 		return
@@ -1585,7 +1773,7 @@ CREATE_READ_AFTER = """	spec := {cls}AttrSpec()
 		resp.Diagnostics.AddError("Decoding {entity} response", err.Error())
 		return
 	}}
-	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, id)"""
+	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, id)"""
 
 
 UPDATE_PUT_PATCH = """	spec := {cls}AttrSpec()
@@ -1599,7 +1787,7 @@ UPDATE_PUT_PATCH = """	spec := {cls}AttrSpec()
 		resp.Diagnostics.AddError("Reading {entity} id", err.Error())
 		return
 	}}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForUpdate(req.Plan.Raw, spec)
 	if err != nil {{
 		resp.Diagnostics.AddError("Encoding {entity} request", err.Error())
 		return
@@ -1614,7 +1802,7 @@ UPDATE_PUT_PATCH = """	spec := {cls}AttrSpec()
 		resp.Diagnostics.AddError("Decoding {entity} response", err.Error())
 		return
 	}}
-	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, id)"""
+	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, id)"""
 
 
 UPDATE_FORCENEW = """	// {entity} has no update operation in the API (create/read/delete only). Every
@@ -1655,13 +1843,12 @@ READ_INSTANCE = """	projectID, err := r.projectID(ctx, req.State.Raw)
 		resp.Diagnostics.AddError("Decoding {entity} response", err.Error())
 		return
 	}}
-	// Use the prior state as the merge base so attributes the user manages but
-	// the API does not faithfully echo back on a GET (fields it never returns, or
-	// returns enriched with server-assigned sub-keys such as a subscription id)
-	// are preserved instead of being clobbered to null / a server-mangled shape,
-	// which would otherwise produce a permanent post-refresh diff. Computed-only
-	// values (absent from prior state) are still refreshed from the API response.
-	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, req.State.Raw, wire, projectID, id)"""
+	// Wire-preferred refresh (client.MergeRead): the API response wins for every
+	// attribute it carries, so out-of-band edits become visible to `terraform
+	// plan` as drift. The prior state is the merge base only for attributes the
+	// GET omits (fields the API never echoes back, write-only secrets, spread
+	// attributes) — those are preserved instead of being clobbered to null.
+	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, client.MergeRead, req.State.Raw, wire, projectID, id)"""
 
 
 # Read-from-list: the entity has no instance GET. GET the collection, unwrap the
@@ -1695,9 +1882,10 @@ READ_FROM_LIST = """	projectID, err := r.projectID(ctx, req.State.Raw)
 		resp.State.RemoveResource(ctx)
 		return
 	}}
-	// Merge against prior state: the list item may omit user-managed fields the
-	// API never echoes back; preserve those instead of clobbering to null.
-	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, req.State.Raw, wire, projectID, id)"""
+	// Wire-preferred refresh (client.MergeRead): the list item wins for every
+	// field it carries (drift detection); prior state fills only the fields the
+	// listing omits (fields the API never echoes back are preserved, not nulled).
+	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, client.MergeRead, req.State.Raw, wire, projectID, id)"""
 
 
 # Default Delete: DELETE the instance path. DELETE may return a JSON body
@@ -1740,7 +1928,7 @@ CREATE_COLLECTION_BODY_ID = """	spec := {cls}AttrSpec()
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {{
 		resp.Diagnostics.AddError("Encoding {entity} request", err.Error())
 		return
@@ -1764,7 +1952,7 @@ CREATE_COLLECTION_BODY_ID = """	spec := {cls}AttrSpec()
 		resp.Diagnostics.AddError("Creating {entity}", "create response did not contain the new filter (no element matching {match_attr})")
 		return
 	}}
-	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, id)"""
+	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, id)"""
 
 
 # Update: PATCH the collection with the id injected into the body. The response is
@@ -1780,7 +1968,7 @@ UPDATE_COLLECTION_BODY_ID = """	spec := {cls}AttrSpec()
 		resp.Diagnostics.AddError("Reading {entity} id", err.Error())
 		return
 	}}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForUpdate(req.Plan.Raw, spec)
 	if err != nil {{
 		resp.Diagnostics.AddError("Encoding {entity} request", err.Error())
 		return
@@ -1801,7 +1989,7 @@ UPDATE_COLLECTION_BODY_ID = """	spec := {cls}AttrSpec()
 		resp.Diagnostics.AddError("Updating {entity}", "updated filter not found in response")
 		return
 	}}
-	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, id)"""
+	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, id)"""
 
 
 # Delete: DELETE the collection with {"id": <id>} as the body.
@@ -1839,7 +2027,7 @@ CREATE_SINGLETON = """	spec := {cls}AttrSpec()
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {{
 		resp.Diagnostics.AddError("Encoding {entity} request", err.Error())
 		return
@@ -1861,7 +2049,7 @@ CREATE_SINGLETON = """	spec := {cls}AttrSpec()
 	}}
 	wire = wrapSingleton(wire, "{read_wrap_key}")
 	// synthetic id = project id (a project singleton has one settings object).
-	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, projectID)"""
+	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, projectID)"""
 
 
 UPDATE_SINGLETON = """	spec := {cls}AttrSpec()
@@ -1870,7 +2058,7 @@ UPDATE_SINGLETON = """	spec := {cls}AttrSpec()
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForUpdate(req.Plan.Raw, spec)
 	if err != nil {{
 		resp.Diagnostics.AddError("Encoding {entity} request", err.Error())
 		return
@@ -1890,7 +2078,7 @@ UPDATE_SINGLETON = """	spec := {cls}AttrSpec()
 		return
 	}}
 	wire = wrapSingleton(wire, "{read_wrap_key}")
-	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, projectID)"""
+	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, projectID)"""
 
 
 READ_SINGLETON = """	projectID, err := r.projectID(ctx, req.State.Raw)
@@ -1914,7 +2102,7 @@ READ_SINGLETON = """	projectID, err := r.projectID(ctx, req.State.Raw)
 	}}
 	wire = wrapSingleton(wire, "{read_wrap_key}")
 	// synthetic id = project id (a project singleton has one settings object).
-	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, req.State.Raw, wire, projectID, projectID)"""
+	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, client.MergeRead, req.State.Raw, wire, projectID, projectID)"""
 
 
 # Singleton Delete: a project-global settings object cannot be deleted. Destroy
@@ -1976,7 +2164,7 @@ CREATE_RPC_LIFECYCLE = """	projectID, err := r.projectID(ctx, req.Plan.Raw)
 		resp.Diagnostics.AddError("Creating {entity}", "create response did not contain the new {entity} (no element matching {match_attr})")
 		return
 	}}
-	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, id)"""
+	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, id)"""
 
 
 # Delete: POST {id_list_key: [<id>]} to the delete RPC path. A 404 is treated as
@@ -2020,7 +2208,7 @@ CREATE_SETTINGS_SINGLETON = """	spec := {cls}AttrSpec()
 		resp.Diagnostics.AddError("Resolving scope id", err.Error())
 		return
 	}}
-	full, err := client.WireFromRaw(req.Plan.Raw, spec)
+	full, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {{
 		resp.Diagnostics.AddError("Encoding {entity} request", err.Error())
 		return
@@ -2047,7 +2235,7 @@ CREATE_SETTINGS_SINGLETON = """	spec := {cls}AttrSpec()
 		return
 	}}
 	wire = wrapSingleton(wire, "{read_wrap_key}")
-	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, scopeID, scopeID)"""
+	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, scopeID, scopeID)"""
 
 
 UPDATE_SETTINGS_SINGLETON = """	spec := {cls}AttrSpec()
@@ -2056,7 +2244,7 @@ UPDATE_SETTINGS_SINGLETON = """	spec := {cls}AttrSpec()
 		resp.Diagnostics.AddError("Resolving scope id", err.Error())
 		return
 	}}
-	full, err := client.WireFromRaw(req.Plan.Raw, spec)
+	full, err := client.WireFromRawForUpdate(req.Plan.Raw, spec)
 	if err != nil {{
 		resp.Diagnostics.AddError("Encoding {entity} request", err.Error())
 		return
@@ -2081,7 +2269,7 @@ UPDATE_SETTINGS_SINGLETON = """	spec := {cls}AttrSpec()
 		return
 	}}
 	wire = wrapSingleton(wire, "{read_wrap_key}")
-	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, scopeID, scopeID)"""
+	r.write{cls}State(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, scopeID, scopeID)"""
 
 
 # ---------------------------------------------------------------------------
@@ -2412,7 +2600,7 @@ func {cls}AttrSpec() client.AttrSpec {{
 		JSONEncodeWireKey: map[string]string{{ {wire_key_set} }},
 		OutputOnlyAttrs:  map[string]bool{{ {output_only_set} }},
 		SpreadAttrs:      map[string]bool{{ {spread_set} }},
-	}}
+{writable_block}	}}
 }}
 """
 
@@ -2448,6 +2636,20 @@ def inject_schema_lines(ent, attr_kind, force_new_attrs=None):
         if force_new_attrs:
             names = ", ".join('"%s"' % n for n in force_new_attrs)
             lines.append("\trequireReplace(s.Attributes, %s)" % names)
+        # Upgrade every jsonencode / json-string passthrough attribute to
+        # jsontypes.Normalized (SEMANTIC JSON equality) via the normalizedJSON
+        # helper. This covers both the injected passthroughs above and blob
+        # attributes that already exist as plain strings in the generated
+        # schema package (e.g. formula.definition, the settings singletons,
+        # warehouse_source.params) without touching the _gen.go files. Without
+        # semantic equality, refreshing a blob from the wire risks "Provider
+        # produced inconsistent result after apply" (server echoes normalized
+        # JSON on create/update) and perpetual diffs from key-order/whitespace
+        # churn on Read. Resource schemas only: data sources never diff.
+        blob_attrs = sorted(set(ent["top_jsonencode"]) | set(ent["top_jsonstring"]))
+        if blob_attrs:
+            names = ", ".join('"%s"' % n for n in blob_attrs)
+            lines.append("\tnormalizedJSON(s.Attributes, %s)" % names)
         # Stabilize every Computed attribute with UseStateForUnknown so a
         # server-populated value already in state is preserved across plans
         # instead of being re-marked "(known after apply)". Without this, a
@@ -2999,6 +3201,33 @@ def main():
             '"%s": true' % f for f in sorted(ent["output_only"])
         )
         spread_set = ", ".join('"%s": true' % f for f in ent["top_spread"])
+        # Writable-field allowlists derived from the entity's create/update
+        # request schemas (see writable_attr_sets). Empty sets bypass filtering;
+        # a bypass reason is emitted as a comment so the intent is auditable.
+        create_w, update_w, bypass_reason = writable_attr_sets(
+            name, ent, man, merged, attr_names
+        )
+        create_w_set = ", ".join('"%s": true' % f for f in sorted(create_w))
+        update_w_set = ", ".join('"%s": true' % f for f in sorted(update_w))
+        if not bypass_reason and not create_w and not update_w:
+            if name not in res_specs:
+                bypass_reason = "data source only (no resource writes); nothing to filter"
+            else:
+                bypass_reason = (
+                    "no create/update request schema resolvable in the frozen spec"
+                )
+        writable_block = ""
+        if bypass_reason:
+            writable_block += (
+                "\t\t// Writable-field allowlists deliberately EMPTY (filtering"
+                " bypassed):\n\t\t// %s.\n" % bypass_reason
+            )
+        writable_block += (
+            "\t\tCreateWritableAttrs: map[string]bool{ %s },\n" % create_w_set
+        )
+        writable_block += (
+            "\t\tUpdateWritableAttrs: map[string]bool{ %s },\n" % update_w_set
+        )
         # ProjectIDAttr is the scope attribute the generic bridge keeps out of the
         # request body and restores into state from extras. For org-scoped entities
         # that attribute is organization_id (it scopes the URL, not the body).
@@ -3020,6 +3249,7 @@ def main():
             wire_key_set=wire_key_set,
             output_only_set=output_only_set,
             spread_set=spread_set,
+            writable_block=writable_block,
         )
         p = os.path.join(OUTDIR, "%s_spec.go" % name)
         open(p, "w").write(src)
@@ -3473,7 +3703,7 @@ def main():
         open(path, "w").write(src)
         written.append(path)
 
-        # Plural "list" data source for the GREEN-10. The list path is the entity's
+        # Plural "list" data source for the GREEN-12. The list path is the entity's
         # collection (already workspace-resolved for feature_flag via OVERRIDES);
         # workspace-scoped entities resolve {workspace_id} at runtime.
         if name in LIST_DATASOURCES:
@@ -3551,6 +3781,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -3619,6 +3850,28 @@ func requireReplace(attrs map[string]schema.Attribute, names ...string) {
 			attrs[n] = a
 		case schema.SingleNestedAttribute:
 			a.PlanModifiers = append(a.PlanModifiers, objectplanmodifier.RequiresReplace())
+			attrs[n] = a
+		}
+	}
+}
+
+// normalizedJSON upgrades the named top-level string attributes to
+// jsontypes.Normalized, the framework custom type with SEMANTIC JSON equality.
+// It is applied to every jsonencode / json-string passthrough attribute (the
+// entity's JSONEncodeAttrs + JSONStringAttrs) so that refreshing those blobs
+// from the wire can never manufacture spurious diffs: a server echo that
+// re-orders object keys, changes whitespace, or re-renders numbers compares
+// equal, which prevents both "Provider produced inconsistent result after
+// apply" (when the server echoes normalized JSON on Create/Update) and
+// perpetual plan diffs after Read refreshes the attribute. Genuinely different
+// JSON (changed values, added/removed fields, reordered ARRAYS — array order is
+// semantic) still diffs. Normalized is wire-compatible with types.String, so
+// existing states holding plain strings load unchanged. Attributes that are
+// not plain StringAttributes are left untouched.
+func normalizedJSON(attrs map[string]schema.Attribute, names ...string) {
+	for _, n := range names {
+		if a, ok := attrs[n].(schema.StringAttribute); ok {
+			a.CustomType = jsontypes.NormalizedType{}
 			attrs[n] = a
 		}
 	}

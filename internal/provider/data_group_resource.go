@@ -88,7 +88,7 @@ func (r *DataGroupResource) Create(ctx context.Context, req resource.CreateReque
 		resp.Diagnostics.AddError("Resolving project_id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForCreate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding data_group request", err.Error())
 		return
@@ -104,7 +104,7 @@ func (r *DataGroupResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 	id := idForDataGroup(wire)
-	r.writeDataGroupState(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, id)
+	r.writeDataGroupState(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, id)
 }
 
 func (r *DataGroupResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -136,9 +136,10 @@ func (r *DataGroupResource) Read(ctx context.Context, req resource.ReadRequest, 
 		resp.State.RemoveResource(ctx)
 		return
 	}
-	// Merge against prior state: the list item may omit user-managed fields the
-	// API never echoes back; preserve those instead of clobbering to null.
-	r.writeDataGroupState(ctx, &resp.State, &resp.Diagnostics, req.State.Raw, wire, projectID, id)
+	// Wire-preferred refresh (client.MergeRead): the list item wins for every
+	// field it carries (drift detection); prior state fills only the fields the
+	// listing omits (fields the API never echoes back are preserved, not nulled).
+	r.writeDataGroupState(ctx, &resp.State, &resp.Diagnostics, client.MergeRead, req.State.Raw, wire, projectID, id)
 }
 
 func (r *DataGroupResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -153,7 +154,7 @@ func (r *DataGroupResource) Update(ctx context.Context, req resource.UpdateReque
 		resp.Diagnostics.AddError("Reading data_group id", err.Error())
 		return
 	}
-	body, err := client.WireFromRaw(req.Plan.Raw, spec)
+	body, err := client.WireFromRawForUpdate(req.Plan.Raw, spec)
 	if err != nil {
 		resp.Diagnostics.AddError("Encoding data_group request", err.Error())
 		return
@@ -168,7 +169,7 @@ func (r *DataGroupResource) Update(ctx context.Context, req resource.UpdateReque
 		resp.Diagnostics.AddError("Decoding data_group response", err.Error())
 		return
 	}
-	r.writeDataGroupState(ctx, &resp.State, &resp.Diagnostics, req.Plan.Raw, wire, projectID, id)
+	r.writeDataGroupState(ctx, &resp.State, &resp.Diagnostics, client.MergeApply, req.Plan.Raw, wire, projectID, id)
 }
 
 func (r *DataGroupResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -205,11 +206,12 @@ func (r *DataGroupResource) ImportState(ctx context.Context, req resource.Import
 	setImportID(ctx, &resp.State, &resp.Diagnostics, "data_group_id", parts[1], "string")
 }
 
-// writeDataGroupState turns an unwrapped API body into resource state. base is the
-// planned raw value (req.Plan.Raw) on create/update so config-supplied values are
-// preserved verbatim, or a null tftypes.Value on read (state is rebuilt from the
-// API response alone). See client.RawFromWireMerged for the merge semantics.
-func (r *DataGroupResource) writeDataGroupState(ctx context.Context, state *tfsdk.State, diags *diagAppender, base tftypes.Value, wire map[string]any, projectID, id string) {
+// writeDataGroupState turns an unwrapped API body into resource state. On
+// create/update (client.MergeApply, base = req.Plan.Raw) config-supplied values
+// are preserved verbatim; on read (client.MergeRead, base = req.State.Raw) the
+// API response wins wherever it carries a field, so drift is refreshed into
+// state. See client.RawFromWireMerged for the exact merge semantics.
+func (r *DataGroupResource) writeDataGroupState(ctx context.Context, state *tfsdk.State, diags *diagAppender, mode client.MergeMode, base tftypes.Value, wire map[string]any, projectID, id string) {
 	extras := map[string]any{
 		"data_group_id": id,
 	}
@@ -217,7 +219,7 @@ func (r *DataGroupResource) writeDataGroupState(ctx context.Context, state *tfsd
 		extras["project_id"] = projectID
 	}
 	schemaType := state.Schema.Type().TerraformType(ctx)
-	val, err := client.RawFromWireMerged(schemaType, base, wire, extras, DataGroupAttrSpec())
+	val, err := client.RawFromWireMerged(schemaType, mode, base, wire, extras, DataGroupAttrSpec())
 	if err != nil {
 		diags.AddError("Building data_group state", err.Error())
 		return

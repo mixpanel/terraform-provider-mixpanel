@@ -42,6 +42,7 @@ resource "mixpanel_metric" "signups" {
 - `metric_id` (Number)
 - `owned_by` (Attributes) (see [below for nested schema](#nestedatt--owned_by))
 - `project_id` (Number)
+- `share_with_project` (Boolean) Whether to share this entity with the whole project after creation. Entities created by a service account are otherwise visible only to that service account. Defaults to `true`. See the [Entity sharing guide](../guides/sharing.md).
 - `verified` (Boolean)
 
 ### Read-Only
@@ -90,3 +91,21 @@ Read-Only:
 - `email` (String)
 - `id` (Number)
 - `name` (String)
+
+## Plan-time validation of `definition`
+
+A malformed metric definition can be **accepted by the API with a 200 and then
+crash the Mixpanel webapp query builder**. The provider validates the decoded
+JSON at `terraform plan` time and rejects the known-corrupting shapes:
+
+- `definition.measurement.property` must be a JSON object (or `null`) — a
+  string/number/array property is the confirmed-crash "wrong type" shape;
+- property-aggregating math (`average`, `median`, `p25`…`p99`,
+  `custom_percentile`, `min`, `max`, `histogram`, `unique_values`,
+  `most_frequent`, `first_value`, `numeric_summary`) requires a non-null
+  `property` (`total` without a property means count-of-events and is fine);
+- funnel behaviors need 2–100 steps and every step must name an event;
+- `funnelOrder` must be `"loose"` or `"any"`;
+- for retention metrics, `measurement.retentionSegmentationEvent` must match
+  one of the retention step events (the webapp derives it from
+  `behaviors[1].name`).

@@ -27,9 +27,8 @@ resource "mixpanel_lexicon_tag" "test" {
 				// A changed attribute must plan as the expected action.
 				Config: providerConfig(srv.URL, `
 resource "mixpanel_lexicon_tag" "test" {
-  project_id = 1
+  project_id = 2
   name = "tf-acc-test"
-  description = "updated description"
 }`),
 				ConfigPlanChecks: resource.ConfigPlanChecks{
 					PreApply: []plancheck.PlanCheck{

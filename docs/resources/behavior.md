@@ -34,4 +34,23 @@ resource "mixpanel_behavior" "power_users" {
 - `description` (String)
 - `name` (String)
 - `project_id` (Number)
+- `share_with_project` (Boolean) Whether to share this entity with the whole project after creation. Entities created by a service account are otherwise visible only to that service account. Defaults to `true`. See the [Entity sharing guide](../guides/sharing.md).
 - `type` (String)
+
+## Plan-time validation of `definition` / `behaviors`
+
+A malformed behavior definition can be **accepted by the API with a 200 and
+then crash the Mixpanel webapp query builder**. The provider validates the
+decoded JSON at `terraform plan` time and rejects the known-corrupting shapes:
+
+- a funnel needs at least 2 steps (`definition.behavior.behaviors`), and at
+  most 100 (the server-side ARB merger limit — a bigger funnel saves but every
+  query on it fails);
+- every step must name an event (`name`) or reference a saved behavior (`id`);
+- `funnelOrder` must be `"loose"` or `"any"` (on the behavior and on each step);
+- filter strictness: `"is set"`/`"is not set"` operators carry no
+  `filterValue`; boolean filters take the strings `"true"`/`"false"`.
+
+Retention definitions with more than 60 custom bucket sizes get a plan
+**warning**: the server clamps retention intervals at 60, so extra buckets are
+silently unreachable.

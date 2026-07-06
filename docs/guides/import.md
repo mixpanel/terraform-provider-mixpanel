@@ -106,7 +106,7 @@ it is harmless; Terraform treats already-imported objects as a no-op).
 
 To import **every** object of a kind in a project, pair a plural data source
 with a `for_each` import block. The provider ships a plural list data source for
-each of the following (the "GREEN-10"):
+each of the following (the "GREEN-12"):
 
 | Data source                  | Imports resource         |
 | ---------------------------- | ------------------------ |
@@ -114,6 +114,7 @@ each of the following (the "GREEN-10"):
 | `mixpanel_annotations`       | `mixpanel_annotation`    |
 | `mixpanel_cohorts`           | `mixpanel_cohort`        |
 | `mixpanel_custom_alerts`     | `mixpanel_custom_alert`  |
+| `mixpanel_custom_events`     | `mixpanel_custom_event`  |
 | `mixpanel_custom_propertys`  | `mixpanel_custom_property`|
 | `mixpanel_custom_roles`      | `mixpanel_custom_role`   |
 | `mixpanel_email_digests`     | `mixpanel_email_digest`  |
