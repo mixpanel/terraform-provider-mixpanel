@@ -50,7 +50,7 @@ resource "mixpanel_dashboard" "board" {
   to server-assigned ids and omitted fields are filled server-side, both of
   which surface as drift on the next refresh.
 - Report cells are created automatically when a `mixpanel_bookmark` board
-  report is attached to the board (see the bookmark resource docs); `layout`
+  report is attached to the board (see the [bookmark resource docs](bookmark.md)); `layout`
   is for arranging/resizing them. Cells cannot reference content that does
   not exist on the board.
 - Transient HTTP 409 conflicts on the dashboards PATCH are retried

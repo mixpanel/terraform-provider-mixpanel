@@ -53,7 +53,7 @@ resource "mixpanel_formula" "conversion" {
 
 Formula definitions are validated at `terraform plan` time with the same rules
 as [mixpanel_metric](metric.md) wherever the definition carries `behavior` /
-`measurement` objects (see the metric resource docs); pure formula definitions
+`measurement` objects (see the [metric resource docs](metric.md)); pure formula definitions
 (`{ formula = { definition = "A/B", ... } }`) pass through untouched.
 
 ## Import
