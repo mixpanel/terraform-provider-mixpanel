@@ -1,18 +1,20 @@
 ---
-page_title: "mixpanel_project_outgoing_integration Data Source - mixpanel"
-subcategory: ""
+page_title: "project_outgoing_integration Data Source - mixpanel"
+subcategory: "Data Pipeline"
 description: |-
   Fetches a Mixpanel project outgoing integration by ID.
 ---
 
-# mixpanel_project_outgoing_integration (Data Source)
+# project_outgoing_integration (Data Source)
 
-Fetches a Mixpanel project outgoing integration by ID.
+Fetches a Mixpanel **project outgoing integration** by its unique identifier. Outgoing integrations represent configured data exports from a Mixpanel project to external destinations (e.g., cloud warehouses, data lakes).
+
+**Note:** This object exists only as a data source. There is no resource counterpart; outgoing integrations are managed through the Mixpanel UI or API outside Terraform.
 
 ## Example Usage
 
 ```terraform
-data "mixpanel_project_outgoing_integration" "example" {
+data "mixpanel_project_outgoing_integration" "warehouse_export" {
   project_id                      = 1234567
   project_outgoing_integration_id = 98765
 }
