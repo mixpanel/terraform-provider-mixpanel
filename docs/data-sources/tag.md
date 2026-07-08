@@ -1,13 +1,19 @@
 ---
-page_title: "mixpanel_tag Data Source - mixpanel"
-subcategory: ""
+page_title: "tag Data Source - mixpanel"
+subcategory: "Governance & Lexicon"
 description: |-
-  Fetches a Mixpanel tag by ID.
+  Fetches a Mixpanel Lexicon tag by ID.
 ---
 
-# mixpanel_tag (Data Source)
+# tag (Data Source)
 
-Fetches a Mixpanel tag by ID.
+Fetches a Mixpanel **Lexicon tag** by ID — a label for categorizing events and
+properties in your data taxonomy.
+
+-> **Resource note.** The `mixpanel_tag` data source and the
+[mixpanel_lexicon_tag](../resources/lexicon_tag.md) resource refer to the **same
+Mixpanel object** — a tag is named "tag" in the data-source context and
+"lexicon_tag" in the resource context for namespace clarity.
 
 ## Example Usage
 
