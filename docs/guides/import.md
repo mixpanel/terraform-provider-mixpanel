@@ -1,3 +1,10 @@
+---
+page_title: "Importing existing Mixpanel objects"
+subcategory: "Guides"
+description: |-
+  Bring objects that already exist in your Mixpanel project under Terraform management.
+---
+
 # Importing existing Mixpanel objects into Terraform
 
 This guide shows how to bring objects that already exist in your Mixpanel
@@ -106,7 +113,7 @@ it is harmless; Terraform treats already-imported objects as a no-op).
 
 To import **every** object of a kind in a project, pair a plural data source
 with a `for_each` import block. The provider ships a plural list data source for
-each of the following (the "GREEN-12"):
+each of the following (the twelve plural list data sources):
 
 | Data source                  | Imports resource         |
 | ---------------------------- | ------------------------ |
@@ -297,4 +304,4 @@ a `date` format diff, edit the generated `date` value to match what the API
 echoed, then re-plan until clean.
 
 A ready-to-run copy of this configuration lives in
-[`examples/import/`](../../examples/import/).
+[`examples/import/`](https://github.com/mixpanel/terraform-provider-mixpanel/tree/main/examples/import).
