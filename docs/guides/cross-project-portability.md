@@ -1,11 +1,16 @@
+---
+page_title: "Cross-project portability"
+subcategory: "Guides"
+description: |-
+  Deploy one analytics configuration across dev, staging, and production projects.
+---
+
 # Cross-Project Portability Patterns
 
 This guide demonstrates how to create reusable, portable Terraform configurations
 that work across multiple Mixpanel projects and environments (dev/staging/production).
 
-The patterns shown here are production-tested and address the most common
-cross-project use cases: cloning cohorts, boards (dashboards), and entire
-project configurations across environments.
+The patterns below are the standard Terraform portability idioms applied to Mixpanel.
 
 ---
 
@@ -61,13 +66,25 @@ resource "mixpanel_cohort" "power_users" {
   description = "Users who performed key actions"
   
   # Environment-specific tuning
-  selector = jsonencode({
-    filter = {
-      property = "session_count"
-      operator = ">"
-      value    = each.value.cohort_size_threshold
+  groups = jsonencode([
+    {
+      event = {
+        resourceType = "cohort"
+        value        = "$all_users"
+        label        = "All Users"
+      }
+      filters = [
+        {
+          property = "session_count"
+          operator = ">"
+          value    = each.value.cohort_size_threshold
+        }
+      ]
+      filtersOperator           = "and"
+      behavioralFilters         = []
+      behavioralFiltersOperator = "or"
     }
-  })
+  ])
 }
 ```
 
@@ -81,9 +98,8 @@ resource "mixpanel_cohort" "power_users" {
 
 ### 2. Using `jsonencode` with Terraform references
 
-For complex nested structures (cohort selectors, dashboard queries, alert
-conditions), use `jsonencode` with Terraform references rather than embedding
-raw JSON strings.
+For complex nested structures (cohort groups, cohort filters), use `jsonencode`
+with Terraform references rather than embedding raw JSON strings.
 
 **❌ Bad: Raw JSON strings**
 ```hcl
@@ -92,7 +108,7 @@ resource "mixpanel_cohort" "engaged_users" {
   name       = "Engaged Users"
   
   # Hard-coded IDs make this non-portable
-  selector = "{\"and\":[{\"data_group_id\":\"42\"}]}"
+  groups = "[{\"event\":{\"resourceType\":\"cohort\",\"value\":\"$all_users\"},\"filters\":[{\"data_group_id\":\"42\"}]}]"
 }
 ```
 
@@ -100,8 +116,9 @@ resource "mixpanel_cohort" "engaged_users" {
 ```hcl
 # First, create the data group
 resource "mixpanel_data_group" "user_profiles" {
-  project_id = var.project_id
-  name       = "User Profiles"
+  project_id    = var.project_id
+  display_name  = "User Profiles"
+  property_name = "user_profile_id"
 }
 
 # Reference it via Terraform
@@ -109,15 +126,25 @@ resource "mixpanel_cohort" "engaged_users" {
   project_id = var.project_id
   name       = "Engaged Users"
   
-  selector = jsonencode({
-    and = [
-      {
-        # Terraform resolves this at apply time
-        data_group_id = mixpanel_data_group.user_profiles.data_group_id
+  groups = jsonencode([
+    {
+      event = {
+        resourceType = "cohort"
+        value        = "$all_users"
+        label        = "All Users"
       }
-    ]
-  })
-}
+      filters = [
+        {
+          # Terraform resolves this at apply time
+          data_group_id = mixpanel_data_group.user_profiles.data_group_id
+          operator      = "is_set"
+        }
+      ]
+      filtersOperator           = "and"
+      behavioralFilters         = []
+      behavioralFiltersOperator = "or"
+    }
+  ])
 ```
 
 **Why this works:**
@@ -128,47 +155,40 @@ resource "mixpanel_cohort" "engaged_users" {
 
 ---
 
-### 3. By-name data sources for ID resolution
+### 3. Referencing existing Mixpanel objects
 
-When referencing existing Mixpanel objects that weren't created by Terraform
-(e.g., manually-created custom properties), use data sources to look them up
-by name rather than hard-coding IDs.
+When your Terraform configuration needs to reference Mixpanel objects that
+already exist, you have two honest patterns:
+
+**Pattern A: Reference resources you manage**
+
+If Terraform creates the object, reference it directly:
 
 ```hcl
-# Look up an existing custom property by name
-data "mixpanel_custom_property" "user_tier" {
+# Terraform manages this cohort
+resource "mixpanel_cohort" "power_users" {
   project_id = var.project_id
-  name       = "User Tier"
+  name       = "Power Users"
+  # ... configuration
 }
 
-# Use it in a dashboard query
+# Reference it in a dashboard (reports attach via mixpanel_bookmark)
+# Dashboard content is managed via mixpanel_bookmark resources, not inline metadata
 resource "mixpanel_dashboard" "customer_health" {
-  project_id = var.project_id
-  name       = "Customer Health"
-  
-  # The custom property ID differs per project
-  # but the NAME is consistent
-  metadata = jsonencode({
-    charts = [
-      {
-        type = "segmentation"
-        query = {
-          breakdown = {
-            # Resolved via data source
-            property_id = data.mixpanel_custom_property.user_tier.id
-          }
-        }
-      }
-    ]
-  })
+  project_id  = var.project_id
+  title       = "Customer Health"
+  description = "Managed by Terraform"
 }
 ```
 
-**Why this works:**
-- Works even when IDs differ across projects
-- Self-documenting: the name is the contract
-- Fails fast: Terraform errors if the property doesn't exist
-- No manual ID lookups
+**Pattern B: Adopt objects Terraform doesn't manage**
+
+For manually-created objects or those managed outside Terraform, use the
+[import guide](./import.md) to bring them under Terraform management. This
+enables cross-references and drift detection.
+
+**By-name lookup data sources** (e.g., fetch a custom property by name instead
+of ID) are a provider roadmap item.
 
 ---
 
@@ -181,9 +201,10 @@ correct ordering.
 ```hcl
 # 1. Create custom properties first
 resource "mixpanel_custom_property" "lifetime_value" {
-  project_id = var.project_id
-  name       = "Lifetime Value"
-  data_type  = "number"
+  project_id   = var.project_id
+  name         = "Lifetime Value"
+  display_name = "Lifetime Value"
+  description  = "Customer lifetime value in USD"
 }
 
 # 2. Create cohorts that reference the properties
@@ -191,30 +212,36 @@ resource "mixpanel_cohort" "high_value_users" {
   project_id = var.project_id
   name       = "High-Value Users"
   
-  selector = jsonencode({
-    filter = {
-      # Terraform ensures the property exists first
-      property_id = mixpanel_custom_property.lifetime_value.id
-      operator    = ">"
-      value       = 1000
+  groups = jsonencode([
+    {
+      event = {
+        resourceType = "cohort"
+        value        = "$all_users"
+        label        = "All Users"
+      }
+      filters = [
+        {
+          # Terraform ensures the property exists first
+          property_id = mixpanel_custom_property.lifetime_value.id
+          operator    = ">"
+          value       = 1000
+        }
+      ]
+      filtersOperator           = "and"
+      behavioralFilters         = []
+      behavioralFiltersOperator = "or"
     }
-  })
+  ])
   
   # Explicit dependency (usually not needed, but makes intent clear)
   depends_on = [mixpanel_custom_property.lifetime_value]
 }
 
-# 3. Create dashboards that reference the cohorts
+# 3. Create dashboards (content managed via mixpanel_bookmark, not inline)
 resource "mixpanel_dashboard" "value_analysis" {
-  project_id = var.project_id
-  name       = "Value Analysis"
-  
-  metadata = jsonencode({
-    filters = {
-      # Terraform ensures the cohort exists first
-      cohort_id = mixpanel_cohort.high_value_users.id
-    }
-  })
+  project_id  = var.project_id
+  title       = "Value Analysis"
+  description = "Dashboard for high-value user metrics"
 }
 ```
 
@@ -245,25 +272,13 @@ locals {
     power_users = {
       name        = "Power Users"
       description = "Users with 10+ sessions"
-      selector = {
-        filter = {
-          property = "session_count"
-          operator = ">="
-          value    = 10
-        }
-      }
+      threshold   = 10
     }
     
     recent_signups = {
       name        = "Recent Signups"
       description = "Signed up in last 7 days"
-      selector = {
-        filter = {
-          property = "signup_date"
-          operator = "within"
-          value    = "7d"
-        }
-      }
+      days        = 7
     }
   }
 }
@@ -282,7 +297,33 @@ resource "mixpanel_cohort" "cohorts" {
   project_id  = local.environments[each.value.env].project_id
   name        = "${local.cohorts[each.value.cohort].name} [${each.value.env}]"
   description = local.cohorts[each.value.cohort].description
-  selector    = jsonencode(local.cohorts[each.value.cohort].selector)
+  
+  # Use the verified groups structure
+  groups = jsonencode([
+    {
+      event = {
+        resourceType = "cohort"
+        value        = "$all_users"
+        label        = "All Users"
+      }
+      filters = each.value.cohort == "power_users" ? [
+        {
+          property = "session_count"
+          operator = ">="
+          value    = local.cohorts[each.value.cohort].threshold
+        }
+      ] : [
+        {
+          property = "signup_date"
+          operator = "within"
+          value    = "${local.cohorts[each.value.cohort].days}d"
+        }
+      ]
+      filtersOperator           = "and"
+      behavioralFilters         = []
+      behavioralFiltersOperator = "or"
+    }
+  ])
 }
 
 # Access as: mixpanel_cohort.cohorts["dev-power_users"]
@@ -291,39 +332,22 @@ resource "mixpanel_cohort" "cohorts" {
 
 ---
 
-### Example 2: Clone dashboards with data source references
+### Example 2: Clone dashboards across environments
 
 ```hcl
-# Look up existing custom properties (created manually or in another stack)
-data "mixpanel_custom_property" "user_tier" {
-  for_each = local.environments
-  
-  project_id = each.value.project_id
-  name       = "User Tier"  # Must exist in all projects
-}
-
 # Clone dashboard across environments
+# Note: Dashboard content (report cells) is managed via mixpanel_bookmark resources
+# rather than inline metadata. See the bookmark documentation for details.
 resource "mixpanel_dashboard" "executive_overview" {
   for_each = local.environments
   
-  project_id = each.value.project_id
-  name       = "Executive Overview"
-  
-  metadata = jsonencode({
-    charts = [
-      {
-        type  = "insights"
-        title = "Users by Tier"
-        query = {
-          breakdown = {
-            # ID resolved per environment
-            property_id = data.mixpanel_custom_property.user_tier[each.key].id
-          }
-        }
-      }
-    ]
-  })
+  project_id  = each.value.project_id
+  title       = "Executive Overview [${upper(each.key)}]"
+  description = "Managed by Terraform for ${each.key} environment"
 }
+
+# To populate the dashboard with reports, use mixpanel_bookmark resources
+# that reference this dashboard's ID
 ```
 
 ---
@@ -346,14 +370,24 @@ variable "environment" {
 # Custom properties
 resource "mixpanel_custom_property" "properties" {
   for_each = {
-    user_tier       = { data_type = "string" }
-    lifetime_value  = { data_type = "number" }
-    last_seen       = { data_type = "datetime" }
+    user_tier = {
+      display_name = "User Tier"
+      description  = "Customer tier level"
+    }
+    lifetime_value = {
+      display_name = "Lifetime Value"
+      description  = "Customer lifetime value in USD"
+    }
+    last_seen = {
+      display_name = "Last Seen"
+      description  = "Last activity timestamp"
+    }
   }
   
-  project_id = var.project_id
-  name       = title(replace(each.key, "_", " "))
-  data_type  = each.value.data_type
+  project_id   = var.project_id
+  name         = each.key
+  display_name = each.value.display_name
+  description  = each.value.description
 }
 
 # Cohorts
@@ -362,25 +396,32 @@ resource "mixpanel_cohort" "power_users" {
   name        = "Power Users"
   description = "Managed by Terraform"
   
-  selector = jsonencode({
-    filter = {
-      property_id = mixpanel_custom_property.properties["lifetime_value"].id
-      operator    = ">"
-      value       = 500
+  groups = jsonencode([
+    {
+      event = {
+        resourceType = "cohort"
+        value        = "$all_users"
+        label        = "All Users"
+      }
+      filters = [
+        {
+          property_id = mixpanel_custom_property.properties["lifetime_value"].id
+          operator    = ">"
+          value       = 500
+        }
+      ]
+      filtersOperator           = "and"
+      behavioralFilters         = []
+      behavioralFiltersOperator = "or"
     }
-  })
+  ])
 }
 
 # Dashboards
 resource "mixpanel_dashboard" "main" {
-  project_id = var.project_id
-  name       = "Main Dashboard - ${var.environment}"
-  
-  metadata = jsonencode({
-    filters = {
-      cohort_id = mixpanel_cohort.power_users.id
-    }
-  })
+  project_id  = var.project_id
+  title       = "Main Dashboard - ${var.environment}"
+  description = "Managed by Terraform"
 }
 
 # root main.tf
@@ -425,14 +466,29 @@ module "mixpanel_prod" {
 
 **Problem:**
 ```hcl
-selector = "{\"cohort_id\":42}"  # Won't work in other projects
+groups = "{\"cohort_id\":42}"  # Won't work in other projects
 ```
 
 **Solution:**
 ```hcl
-selector = jsonencode({
-  cohort_id = mixpanel_cohort.power_users.id
-})
+groups = jsonencode([
+  {
+    event = {
+      resourceType = "cohort"
+      value        = "$all_users"
+      label        = "All Users"
+    }
+    filters = [
+      {
+        cohort_id = mixpanel_cohort.power_users.id
+        operator  = "in"
+      }
+    ]
+    filtersOperator           = "and"
+    behavioralFilters         = []
+    behavioralFiltersOperator = "or"
+  }
+])
 ```
 
 ---
@@ -442,15 +498,35 @@ selector = jsonencode({
 **Problem:**
 ```hcl
 resource "mixpanel_cohort" "a" {
-  selector = jsonencode({
-    cohort_id = mixpanel_cohort.b.id  # A depends on B
-  })
+  groups = jsonencode([
+    {
+      event = {
+        resourceType = "cohort"
+        value        = mixpanel_cohort.b.id  # A depends on B
+        label        = "Cohort B"
+      }
+      filters                   = []
+      filtersOperator           = "and"
+      behavioralFilters         = []
+      behavioralFiltersOperator = "or"
+    }
+  ])
 }
 
 resource "mixpanel_cohort" "b" {
-  selector = jsonencode({
-    cohort_id = mixpanel_cohort.a.id  # B depends on A
-  })
+  groups = jsonencode([
+    {
+      event = {
+        resourceType = "cohort"
+        value        = mixpanel_cohort.a.id  # B depends on A
+        label        = "Cohort A"
+      }
+      filters                   = []
+      filtersOperator           = "and"
+      behavioralFilters         = []
+      behavioralFiltersOperator = "or"
+    }
+  ])
 }
 ```
 
@@ -464,27 +540,26 @@ lifecycle rules.
 
 **Problem:**
 ```hcl
-# Dev uses "UserTier", prod uses "User Tier"
-data "mixpanel_custom_property" "tier" {
-  name = var.custom_property_name  # Fragile
-}
+# Dev uses "power_users", prod uses "Power Users"
+# Can cause drift when objects aren't managed consistently
 ```
 
 **Solution:**  
-Establish naming conventions and enforce them:
+Establish naming conventions and enforce them via Terraform:
 ```hcl
 # Enforce consistent naming in all projects
 locals {
-  property_names = {
-    user_tier = "User Tier"  # Single source of truth
+  cohort_names = {
+    power_users = "Power Users"  # Single source of truth
   }
 }
 
-data "mixpanel_custom_property" "tier" {
+resource "mixpanel_cohort" "cohorts" {
   for_each = local.environments
   
   project_id = each.value.project_id
-  name       = local.property_names.user_tier
+  name       = local.cohort_names.power_users
+  # ... rest of configuration
 }
 ```
 
@@ -555,13 +630,33 @@ resource "mixpanel_cohort" "users" {
   project_id = var.project_id
   name       = "Users"
   
-  selector = var.enable_new_cohort_logic ? jsonencode({
-    # New logic
-    filter = { /* ... */ }
-  }) : jsonencode({
-    # Old logic
-    filter = { /* ... */ }
-  })
+  groups = var.enable_new_cohort_logic ? jsonencode([
+    {
+      event = {
+        resourceType = "cohort"
+        value        = "$all_users"
+        label        = "All Users"
+      }
+      # New logic
+      filters                   = [ /* ... */ ]
+      filtersOperator           = "and"
+      behavioralFilters         = []
+      behavioralFiltersOperator = "or"
+    }
+  ]) : jsonencode([
+    {
+      event = {
+        resourceType = "cohort"
+        value        = "$all_users"
+        label        = "All Users"
+      }
+      # Old logic
+      filters                   = [ /* ... */ ]
+      filtersOperator           = "and"
+      behavioralFilters         = []
+      behavioralFiltersOperator = "or"
+    }
+  ])
 }
 ```
 
@@ -631,7 +726,8 @@ Before deploying to production:
 | Pattern | Use case | Example |
 |---------|----------|---------|
 | `for_each` over environments | Deploy same config to dev/staging/prod | `for_each = local.environments` |
-| `jsonencode` with TF refs | Embed IDs that differ per project | `jsonencode({ cohort_id = mixpanel_cohort.x.id })` |
-| By-name data sources | Reference existing objects by name | `data "mixpanel_custom_property" "tier" { name = "User Tier" }` |
+| `jsonencode` with TF refs | Embed IDs that differ per project | `jsonencode([{ event = {...}, filters = [...] }])` |
+| Reference managed resources | Use objects Terraform creates | `cohort_id = mixpanel_cohort.power_users.id` |
+| Import external objects | Adopt manually-created objects | See [import guide](./import.md) |
 | Explicit dependencies | Control apply order | `depends_on = [mixpanel_custom_property.x]` |
 | Modules | Encapsulate full project config | `module "mp_dev" { source = "./modules/project" }` |

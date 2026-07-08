@@ -18,7 +18,7 @@ with environment-specific thresholds.
 **What you'll learn:**
 - Using `for_each` to iterate over environments
 - Environment-specific configuration via `each.value`
-- Using `jsonencode` for cohort selectors
+- Using `jsonencode` for cohort groups
 - Outputting results for verification
 
 **Usage:**
@@ -184,9 +184,10 @@ Error: Custom property "User Tier" not found in project 1234567
 Create the custom property in the Mixpanel UI first, or add it to your Terraform config:
 ```hcl
 resource "mixpanel_custom_property" "user_tier" {
-  project_id = var.project_id
-  name       = "User Tier"
-  data_type  = "string"
+  project_id   = var.project_id
+  name         = "user_tier"
+  display_name = "User Tier"
+  description  = "Customer tier level"
 }
 ```
 
@@ -203,12 +204,27 @@ Error: Provider produced inconsistent result after apply
 You likely have a hard-coded ID in a JSON string. Use `jsonencode` with Terraform references:
 ```hcl
 # ❌ Bad
-selector = "{\"cohort_id\": 42}"
+groups = "[{\"event\":{...},\"filters\":[{\"cohort_id\":42}]}]"
 
 # ✅ Good
-selector = jsonencode({
-  cohort_id = mixpanel_cohort.power_users.id
-})
+groups = jsonencode([
+  {
+    event = {
+      resourceType = "cohort"
+      value        = "$all_users"
+      label        = "All Users"
+    }
+    filters = [
+      {
+        cohort_id = mixpanel_cohort.power_users.id
+        operator  = "in"
+      }
+    ]
+    filtersOperator           = "and"
+    behavioralFilters         = []
+    behavioralFiltersOperator = "or"
+  }
+])
 ```
 
 ---
