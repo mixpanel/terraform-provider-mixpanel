@@ -1,6 +1,6 @@
 ---
 page_title: "mixpanel_property_definition Resource - mixpanel"
-subcategory: ""
+subcategory: "Governance & Lexicon"
 description: |-
   Manages the Lexicon metadata (display name, description, type, visibility flags) of one event or profile property.
 ---
