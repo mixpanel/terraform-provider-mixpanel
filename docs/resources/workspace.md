@@ -55,11 +55,11 @@ resource "mixpanel_workspace" "marketing" {
 
 ## Import
 
-Import using the workspace ID:
+Import using the composite identifier `project_id:<id>`:
 
 ```terraform
 import {
   to = mixpanel_workspace.marketing
-  id = "9876543"
+  id = "1234567:9876543"
 }
 ```

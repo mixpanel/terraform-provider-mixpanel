@@ -73,11 +73,11 @@ resource "mixpanel_project" "new" {
 
 ## Import
 
-Import using the project ID:
+Import using the composite identifier `organization_id:<id>`:
 
 ```terraform
 import {
   to = mixpanel_project.new
-  id = "1234567"
+  id = "7654321:1234567"
 }
 ```
