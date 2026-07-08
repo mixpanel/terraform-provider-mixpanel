@@ -22,10 +22,8 @@ description: |-
 
 ### Read-Only
 
-- `custom_event` (Attributes) A single custom event (``CustomEvent.to_json``).
-
-``extra="allow"`` keeps the open tail for the conditionally-injected
-``ENTITY_PERMISSIONS`` keys while still emitting a named ``$ref``. (see [below for nested schema](#nestedatt--custom_event))
+- `custom_event` (Attributes) A custom event definition (JSON). Additional keys
+returned by the API are preserved. (see [below for nested schema](#nestedatt--custom_event))
 
 <a id="nestedatt--custom_event"></a>
 ### Nested Schema for `custom_event`

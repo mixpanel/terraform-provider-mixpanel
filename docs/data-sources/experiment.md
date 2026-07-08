@@ -59,7 +59,7 @@ description: |-
 - `pinned_date` (String)
 - `project_name` (String)
 - `start_date` (String)
-- `status` (String) Experiment status values stored in the database.
+- `status` (String) The experiment's lifecycle status.
 - `tags` (List of String)
 - `variants` (Attributes List) (see [below for nested schema](#nestedatt--variants))
 

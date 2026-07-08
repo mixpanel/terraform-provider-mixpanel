@@ -18,8 +18,7 @@ description: |-
 ### Required
 
 - `name` (String)
-- `type` (String) Template hint for the flow's intent. Drives FE editor selection and the
-activation-time minimum-shape rule. Extend as more template types are added.
+- `type` (String) The agent-flow template type.
 
 ### Optional
 

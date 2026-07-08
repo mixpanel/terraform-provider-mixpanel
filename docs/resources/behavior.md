@@ -44,8 +44,8 @@ then crash the Mixpanel webapp query builder**. The provider validates the
 decoded JSON at `terraform plan` time and rejects the known-corrupting shapes:
 
 - a funnel needs at least 2 steps (`definition.behavior.behaviors`), and at
-  most 100 (the server-side ARB merger limit — a bigger funnel saves but every
-  query on it fails);
+  most 100 (the server-side funnel-step limit (100 steps) — a bigger funnel
+  saves but every query on it fails);
 - every step must name an event (`name`) or reference a saved behavior (`id`);
 - `funnelOrder` must be `"loose"` or `"any"` (on the behavior and on each step);
 - filter strictness: `"is set"`/`"is not set"` operators carry no

@@ -104,7 +104,7 @@ resource "mixpanel_experiment" "decided" {
 - `project_id` (Number)
 - `project_name` (String)
 - `start_date` (String)
-- `status` (String) Experiment status values stored in the database.
+- `status` (String) The experiment's lifecycle status.
 
 <a id="nestedatt--metrics"></a>
 ### Nested Schema for `metrics`

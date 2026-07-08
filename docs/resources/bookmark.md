@@ -13,8 +13,8 @@ Manages a saved report (bookmark).
 ## Board reports: create/delete go through the board
 
 Bookmarks whose `type` is `insights`, `retention`, `funnels`, or `flows` are
-**board reports** (`BOARDS_DASHBOARD_BOOKMARK_TYPES` in the Mixpanel webapp):
-they only exist as a cell on a board. For these types (live-verified against
+**board reports** (the report types Mixpanel allows on a board): they only
+exist as a cell on a board. For these types (live-verified against
 the Mixpanel app API):
 
 - `dashboard_id` is **required** (enforced at plan time). The provider creates
@@ -129,8 +129,8 @@ Bookmark `params` are validated at `terraform plan` time against the
 known-corrupting shapes:
 
 - when `type` is `"funnels"` and the params carry a legacy `steps` array, it
-  must have between 1 and 100 steps (100 is the server-side ARB merger limit —
-  a bigger funnel saves but every query on it fails);
+  must have between 1 and 100 steps (100 is the server-side funnel-step limit
+  (100 steps) — a bigger funnel saves but every query on it fails);
 - multi-metric params (`params.sections.show[]`) apply the behavior and
   measurement rules from the `mixpanel_behavior` / `mixpanel_metric` docs
   (funnels need at least 2 named steps; property-aggregating math needs a

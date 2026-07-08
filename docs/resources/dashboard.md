@@ -51,9 +51,9 @@ resource "mixpanel_dashboard" "board" {
 The generated `cards`, `rows`, and `card_order` attributes predate `layout`
 and are **create-time-only / deprecated for layout management**: `cards` is
 rejected by the PATCH endpoint with 400, and `rows` has an empty nested
-schema (the frozen spec cannot express it). They are kept in the schema for
-state compatibility; use `layout` (and `mixpanel_bookmark` with
-`dashboard_id`) instead.
+schema (this block's shape is free-form; manage it via the `layout`
+attribute). They are kept in the schema for state compatibility; use `layout`
+(and `mixpanel_bookmark` with `dashboard_id`) instead.
 
 
 ## Update Semantics
@@ -91,7 +91,7 @@ the API rejects them with `400 extra keys not allowed`.
 - `share_with_project` (Boolean) Whether to share this entity with the whole project after creation. Entities created by a service account are otherwise visible only to that service account. Defaults to `true`. See the [Entity sharing guide](../guides/sharing.md).
 - `target_parent_dashboard_id` (Number)
 - `target_project_id` (Number)
-- `time_filter` (Attributes) Mirror of ``api-spec.yml#/components/schemas/TimeFilter``. (see [below for nested schema](#nestedatt--time_filter))
+- `time_filter` (Attributes) A Mixpanel time-filter object (JSON). (see [below for nested schema](#nestedatt--time_filter))
 - `title` (String)
 
 ### Read-Only
