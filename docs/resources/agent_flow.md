@@ -15,7 +15,7 @@ Manages a Mixpanel **agent flow** — an automated workflow template that orches
 resource "mixpanel_agent_flow" "example" {
   name        = "Daily Insights Flow"
   description = "Automated daily data analysis workflow"
-  type        = "scheduled"
+  type        = "metric_monitor"
   
   graph = jsonencode({
     nodes = []
