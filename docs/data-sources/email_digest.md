@@ -1,11 +1,11 @@
 ---
-page_title: "email_digest Data Source - mixpanel"
+page_title: "mixpanel_email_digest Data Source - mixpanel"
 subcategory: "Analytics & Reporting"
 description: |-
   Fetches a Mixpanel email digest subscription by ID.
 ---
 
-# email_digest (Data Source)
+# mixpanel_email_digest (Data Source)
 
 Fetches a Mixpanel email digest — a scheduled dashboard subscription delivered via email or Slack.
 

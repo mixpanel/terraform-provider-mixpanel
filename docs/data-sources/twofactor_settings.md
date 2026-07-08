@@ -1,11 +1,11 @@
 ---
-page_title: "twofactor_settings Data Source - mixpanel"
+page_title: "mixpanel_twofactor_settings Data Source - mixpanel"
 subcategory: "Administration & Access"
 description: |-
   Reads two-factor authentication settings.
 ---
 
-# twofactor_settings (Data Source)
+# mixpanel_twofactor_settings (Data Source)
 
 Reads organization-level two-factor authentication (2FA) settings that control whether multi-factor authentication is required for organization members.
 

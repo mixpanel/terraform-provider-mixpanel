@@ -1,11 +1,11 @@
 ---
-page_title: "custom_events Data Source - mixpanel"
+page_title: "mixpanel_custom_events Data Source - mixpanel"
 subcategory: "Analytics & Reporting"
 description: |-
   Lists every custom event in a project for bulk import and discovery.
 ---
 
-# custom_events (Data Source)
+# mixpanel_custom_events (Data Source)
 
 Lists every Mixpanel custom event in a project — use it to discover custom event IDs and to bulk-import with `for_each`. See also [`mixpanel_custom_event` data source](custom_event.md) and [`mixpanel_custom_event` resource](../resources/custom_event.md).
 

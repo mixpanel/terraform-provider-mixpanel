@@ -1,11 +1,11 @@
 ---
-page_title: "custom_role Data Source - mixpanel"
+page_title: "mixpanel_custom_role Data Source - mixpanel"
 subcategory: "Administration & Access"
 description: |-
   Reads a Mixpanel custom role.
 ---
 
-# custom_role (Data Source)
+# mixpanel_custom_role (Data Source)
 
 Reads a Mixpanel custom role — a named set of permissions that can be assigned to organization members. Custom roles define granular access controls across projects, data management, and administrative functions.
 

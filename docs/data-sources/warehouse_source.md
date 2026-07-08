@@ -1,11 +1,11 @@
 ---
-page_title: "warehouse_source Data Source - mixpanel"
+page_title: "mixpanel_warehouse_source Data Source - mixpanel"
 subcategory: "Data Pipeline"
 description: |-
   Fetches a Mixpanel warehouse source by ID.
 ---
 
-# warehouse_source (Data Source)
+# mixpanel_warehouse_source (Data Source)
 
 Fetches a Mixpanel **warehouse source** (`mixpanel_warehouse_source`) by its unique identifier and project. Warehouse sources define connections to external data warehouses for querying Mixpanel data.
 

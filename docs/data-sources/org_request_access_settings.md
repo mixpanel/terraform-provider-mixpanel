@@ -1,11 +1,11 @@
 ---
-page_title: "org_request_access_settings Data Source - mixpanel"
+page_title: "mixpanel_org_request_access_settings Data Source - mixpanel"
 subcategory: "Administration & Access"
 description: |-
   Reads organization request access settings.
 ---
 
-# org_request_access_settings (Data Source)
+# mixpanel_org_request_access_settings (Data Source)
 
 Reads organization-level settings controlling how users request access to the organization. These settings determine approval workflows and access request behavior.
 

@@ -1,11 +1,11 @@
 ---
-page_title: "property_definition Data Source - mixpanel"
+page_title: "mixpanel_property_definition Data Source - mixpanel"
 subcategory: "Governance & Lexicon"
 description: |-
   Fetches a Mixpanel Lexicon property definition by name.
 ---
 
-# property_definition (Data Source)
+# mixpanel_property_definition (Data Source)
 
 Fetches a Mixpanel **Lexicon property definition** by name — the metadata,
 type, visibility, and documentation for one event or profile property.

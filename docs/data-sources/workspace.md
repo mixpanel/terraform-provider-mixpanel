@@ -1,11 +1,11 @@
 ---
-page_title: "workspace Data Source - mixpanel"
+page_title: "mixpanel_workspace Data Source - mixpanel"
 subcategory: "Administration & Access"
 description: |-
   Reads a Mixpanel workspace.
 ---
 
-# workspace (Data Source)
+# mixpanel_workspace (Data Source)
 
 Reads a Mixpanel workspace — a collaborative environment within a project that controls data access and member permissions. Workspaces enable teams to partition analytical work and control which data each group can query.
 

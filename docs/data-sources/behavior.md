@@ -1,11 +1,11 @@
 ---
-page_title: "behavior Data Source - mixpanel"
+page_title: "mixpanel_behavior Data Source - mixpanel"
 subcategory: "Analytics & Reporting"
 description: |-
   Fetches a Mixpanel behavior (funnel or retention definition) by ID.
 ---
 
-# behavior (Data Source)
+# mixpanel_behavior (Data Source)
 
 Fetches a Mixpanel behavior — a reusable funnel or retention sequence definition composed of multiple events.
 

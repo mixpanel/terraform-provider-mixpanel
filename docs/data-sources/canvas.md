@@ -1,11 +1,11 @@
 ---
-page_title: "canvas Data Source - mixpanel"
+page_title: "mixpanel_canvas Data Source - mixpanel"
 subcategory: "Analytics & Reporting"
 description: |-
   Fetches a Mixpanel canvas (metric tree visualization) by ID.
 ---
 
-# canvas (Data Source)
+# mixpanel_canvas (Data Source)
 
 Fetches a Mixpanel canvas — a hierarchical metric tree that visualizes KPI breakdowns and dependencies.
 

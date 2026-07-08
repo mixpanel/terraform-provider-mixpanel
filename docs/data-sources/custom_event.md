@@ -1,11 +1,11 @@
 ---
-page_title: "custom_event Data Source - mixpanel"
+page_title: "mixpanel_custom_event Data Source - mixpanel"
 subcategory: "Analytics & Reporting"
 description: |-
   Fetches a Mixpanel custom event definition by ID.
 ---
 
-# custom_event (Data Source)
+# mixpanel_custom_event (Data Source)
 
 Fetches a Mixpanel custom event — a composite event definition built from multiple raw events or conditions. See also [`mixpanel_custom_event` resource](../resources/custom_event.md).
 

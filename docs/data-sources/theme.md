@@ -1,11 +1,11 @@
 ---
-page_title: "theme Data Source - mixpanel"
+page_title: "mixpanel_theme Data Source - mixpanel"
 subcategory: "Analytics & Reporting"
 description: |-
   Fetches a Mixpanel theme by ID to read its color and styling configuration.
 ---
 
-# theme (Data Source)
+# mixpanel_theme (Data Source)
 
 Fetches a Mixpanel theme — a reusable color palette and styling configuration for reports and dashboards.
 

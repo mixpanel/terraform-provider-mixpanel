@@ -1,11 +1,11 @@
 ---
-page_title: "org_session_settings Data Source - mixpanel"
+page_title: "mixpanel_org_session_settings Data Source - mixpanel"
 subcategory: "Administration & Access"
 description: |-
   Reads organization session settings.
 ---
 
-# org_session_settings (Data Source)
+# mixpanel_org_session_settings (Data Source)
 
 Reads organization-level session settings that control user authentication and session timeout behavior across the organization.
 

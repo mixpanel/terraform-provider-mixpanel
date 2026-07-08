@@ -64,7 +64,7 @@ Assign exactly one subcategory from this list:
 - **Product vocabulary leads, Terraform type follows.** Example: "Manages a Mixpanel **Board** (`mixpanel_dashboard`)".
 - **Gloss Terraform jargon on first use** per page (taint, ForceNew, Optional+Computed).
 - **Trust/alpha language lives only in `docs/index.md`.** No per-page alpha warnings.
-- **Cross-links are real relative links** within `docs/` (e.g. `[sharing guide](../guides/sharing.md)`) or absolute GitHub URLs (`https://github.com/mixpanel/terraform-provider-mixpanel/...`). Links must not escape `docs/` except as absolute URLs.
+- **Cross-links are real relative links** within `docs/` (e.g. `docs/guides/sharing.md`) or absolute GitHub URLs (`https://github.com/mixpanel/terraform-provider-mixpanel/...`). Links must not escape `docs/` except as absolute URLs.
 - **No internal codenames in docs.** Never use GREEN-*, ARB (standalone), api-spec.yml, pydantic docstrings, "frozen spec", or spec numbers (045/047) in user-facing documentation.
 - **Claim discipline.** Never claim "first" or "only" analytics provider. State the breadth and depth of the analytical surface with a dated comparison when relevant (see `docs/index.md` for the approved framing).
 - **No hype.** Plain language, no marketing vocabulary.

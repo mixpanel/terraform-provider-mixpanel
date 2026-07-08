@@ -1,11 +1,11 @@
 ---
-page_title: "service_account Data Source - mixpanel"
+page_title: "mixpanel_service_account Data Source - mixpanel"
 subcategory: "Administration & Access"
 description: |-
   Reads a Mixpanel service account.
 ---
 
-# service_account (Data Source)
+# mixpanel_service_account (Data Source)
 
 Reads a Mixpanel service account — an API credential used for programmatic access to Mixpanel. Service accounts enable automation and integration workflows without using individual user credentials.
 

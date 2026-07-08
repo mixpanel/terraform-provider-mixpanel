@@ -1,11 +1,11 @@
 ---
-page_title: "custom_alerts Data Source - mixpanel"
+page_title: "mixpanel_custom_alerts Data Source - mixpanel"
 subcategory: "Analytics & Reporting"
 description: |-
   Lists every custom alert in a project for bulk import and discovery.
 ---
 
-# custom_alerts (Data Source)
+# mixpanel_custom_alerts (Data Source)
 
 Lists every Mixpanel custom alert in a project — use it to discover alert IDs and to bulk-import with `for_each`. See also [`mixpanel_custom_alert` data source](custom_alert.md) and [`mixpanel_custom_alert` resource](../resources/custom_alert.md).
 

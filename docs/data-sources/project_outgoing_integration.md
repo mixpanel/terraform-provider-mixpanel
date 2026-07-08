@@ -1,11 +1,11 @@
 ---
-page_title: "project_outgoing_integration Data Source - mixpanel"
+page_title: "mixpanel_project_outgoing_integration Data Source - mixpanel"
 subcategory: "Data Pipeline"
 description: |-
   Fetches a Mixpanel project outgoing integration by ID.
 ---
 
-# project_outgoing_integration (Data Source)
+# mixpanel_project_outgoing_integration (Data Source)
 
 Fetches a Mixpanel **project outgoing integration** by its unique identifier. Outgoing integrations represent configured data exports from a Mixpanel project to external destinations (e.g., cloud warehouses, data lakes).
 

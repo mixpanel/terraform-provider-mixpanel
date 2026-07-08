@@ -1,11 +1,11 @@
 ---
-page_title: "email_digests Data Source - mixpanel"
+page_title: "mixpanel_email_digests Data Source - mixpanel"
 subcategory: "Analytics & Reporting"
 description: |-
   Lists every email digest in a project for bulk import and discovery.
 ---
 
-# email_digests (Data Source)
+# mixpanel_email_digests (Data Source)
 
 Lists every Mixpanel email digest in a project — use it to discover digest IDs and to bulk-import with `for_each`. See also [`mixpanel_email_digest` data source](email_digest.md) and [`mixpanel_email_digest` resource](../resources/email_digest.md).
 

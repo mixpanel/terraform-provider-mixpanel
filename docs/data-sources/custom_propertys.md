@@ -1,11 +1,11 @@
 ---
-page_title: "custom_propertys Data Source - mixpanel"
+page_title: "mixpanel_custom_propertys Data Source - mixpanel"
 subcategory: "Analytics & Reporting"
 description: |-
   Lists every custom property in a project for bulk import and discovery.
 ---
 
-# custom_propertys (Data Source)
+# mixpanel_custom_propertys (Data Source)
 
 Lists every Mixpanel custom property in a project — use it to discover custom property IDs and to bulk-import with `for_each`. See also [`mixpanel_custom_property` data source](custom_property.md) and [`mixpanel_custom_property` resource](../resources/custom_property.md).
 

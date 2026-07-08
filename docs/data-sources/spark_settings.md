@@ -1,11 +1,11 @@
 ---
-page_title: "spark_settings Data Source - mixpanel"
+page_title: "mixpanel_spark_settings Data Source - mixpanel"
 subcategory: "AI & Automation"
 description: |-
   Retrieves Spark settings for an organization.
 ---
 
-# spark_settings (Data Source)
+# mixpanel_spark_settings (Data Source)
 
 Retrieves settings for **Spark** — Mixpanel's AI assistant that provides intelligent insights and automated analysis.
 

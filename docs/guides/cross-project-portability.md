@@ -5,7 +5,7 @@ description: |-
   Deploy one analytics configuration across dev, staging, and production projects.
 ---
 
-# Cross-Project Portability Patterns
+# Cross-project portability
 
 This guide demonstrates how to create reusable, portable Terraform configurations
 that work across multiple Mixpanel projects and environments (dev/staging/production).
@@ -667,7 +667,7 @@ resource "mixpanel_cohort" "users" {
 Before creating new resources, import existing ones to avoid duplicates:
 
 ```bash
-# Discover existing cohorts
+# Scaffold config for import blocks you have declared
 terraform plan -generate-config-out=generated.tf
 
 # Review generated.tf, then apply

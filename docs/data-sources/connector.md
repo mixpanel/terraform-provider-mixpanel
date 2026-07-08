@@ -1,11 +1,11 @@
 ---
-page_title: "connector Data Source - mixpanel"
+page_title: "mixpanel_connector Data Source - mixpanel"
 subcategory: "Data Pipeline"
 description: |-
   Fetches a Mixpanel data pipeline connector by ID.
 ---
 
-# connector (Data Source)
+# mixpanel_connector (Data Source)
 
 Fetches a Mixpanel data pipeline **connector** (`mixpanel_connector`) by its unique identifier and project. Connectors enable data imports into Mixpanel from external sources like cloud warehouses.
 

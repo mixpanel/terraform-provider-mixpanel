@@ -1,11 +1,11 @@
 ---
-page_title: "bookmark Data Source - mixpanel"
+page_title: "mixpanel_bookmark Data Source - mixpanel"
 subcategory: "Analytics & Reporting"
 description: |-
   Fetches a Mixpanel bookmark (saved report) by ID to read its name, type, and configuration.
 ---
 
-# bookmark (Data Source)
+# mixpanel_bookmark (Data Source)
 
 Fetches a Mixpanel bookmark — a saved report (Insights, Funnels, Flows, Retention, or other report type) configuration.
 

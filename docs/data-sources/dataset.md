@@ -1,11 +1,11 @@
 ---
-page_title: "dataset Data Source - mixpanel"
+page_title: "mixpanel_dataset Data Source - mixpanel"
 subcategory: "Data Pipeline"
 description: |-
   Fetches a Mixpanel dataset by ID.
 ---
 
-# dataset (Data Source)
+# mixpanel_dataset (Data Source)
 
 Fetches a Mixpanel **dataset** (`mixpanel_dataset`) by its unique identifier and project. Datasets define schemas for ingested data in Mixpanel pipelines.
 

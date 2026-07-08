@@ -1,11 +1,11 @@
 ---
-page_title: "agent_flows Data Source - mixpanel"
+page_title: "mixpanel_agent_flows Data Source - mixpanel"
 subcategory: "AI & Automation"
 description: |-
   Lists all Agent Flow objects in a project.
 ---
 
-# agent_flows (Data Source)
+# mixpanel_agent_flows (Data Source)
 
 Lists all **Agent Flows** in a project — automated workflows powered by Mixpanel's AI capabilities that can analyze data, generate insights, and perform scheduled actions.
 

@@ -1,11 +1,11 @@
 ---
-page_title: "custom_alert Data Source - mixpanel"
+page_title: "mixpanel_custom_alert Data Source - mixpanel"
 subcategory: "Analytics & Reporting"
 description: |-
   Fetches a Mixpanel custom alert by ID to read its name and condition.
 ---
 
-# custom_alert (Data Source)
+# mixpanel_custom_alert (Data Source)
 
 Fetches a Mixpanel custom alert — a threshold-based notification that fires when a metric crosses a configured condition.
 

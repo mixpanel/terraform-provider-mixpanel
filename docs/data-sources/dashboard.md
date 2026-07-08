@@ -1,11 +1,11 @@
 ---
-page_title: "dashboard Data Source - mixpanel"
+page_title: "mixpanel_dashboard Data Source - mixpanel"
 subcategory: "Analytics & Reporting"
 description: |-
   Fetches a Mixpanel dashboard (Board) by ID to read its title, description, and metadata.
 ---
 
-# dashboard (Data Source)
+# mixpanel_dashboard (Data Source)
 
 Fetches a Mixpanel dashboard — a Board that arranges saved reports into a shareable view. See also [`mixpanel_dashboard` resource](../resources/dashboard.md).
 

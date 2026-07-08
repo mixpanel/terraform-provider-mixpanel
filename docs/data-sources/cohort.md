@@ -1,11 +1,11 @@
 ---
-page_title: "cohort Data Source - mixpanel"
+page_title: "mixpanel_cohort Data Source - mixpanel"
 subcategory: "Analytics & Reporting"
 description: |-
   Fetches a Mixpanel cohort by ID to read its criteria and metadata.
 ---
 
-# cohort (Data Source)
+# mixpanel_cohort (Data Source)
 
 Fetches a Mixpanel cohort — a saved user segment defined by behavioral or property criteria. See also [`mixpanel_cohort` resource](../resources/cohort.md).
 

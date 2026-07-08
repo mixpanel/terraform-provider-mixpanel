@@ -1,11 +1,11 @@
 ---
-page_title: "rollup_project Data Source - mixpanel"
+page_title: "mixpanel_rollup_project Data Source - mixpanel"
 subcategory: "Data Pipeline"
 description: |-
   Fetches a Mixpanel rollup project by ID.
 ---
 
-# rollup_project (Data Source)
+# mixpanel_rollup_project (Data Source)
 
 Fetches a Mixpanel **rollup project** (`mixpanel_rollup_project`) by its unique identifier. Rollup projects aggregate data from multiple datasets for cross-project analysis.
 

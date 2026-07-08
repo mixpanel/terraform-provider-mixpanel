@@ -1,11 +1,11 @@
 ---
-page_title: "schema_graph Data Source - mixpanel"
+page_title: "mixpanel_schema_graph Data Source - mixpanel"
 subcategory: "Governance & Lexicon"
 description: |-
   Fetches the Mixpanel project schema graph — how events and properties relate.
 ---
 
-# schema_graph (Data Source)
+# mixpanel_schema_graph (Data Source)
 
 Fetches the **schema graph** for a Mixpanel project — a JSON representation of
 all tracked events and their associated properties, including density metrics

@@ -1,11 +1,11 @@
 ---
-page_title: "agent_flow Data Source - mixpanel"
+page_title: "mixpanel_agent_flow Data Source - mixpanel"
 subcategory: "AI & Automation"
 description: |-
   Retrieves a Mixpanel Agent Flow by ID.
 ---
 
-# agent_flow (Data Source)
+# mixpanel_agent_flow (Data Source)
 
 Retrieves an **Agent Flow** — an automated workflow powered by Mixpanel's AI capabilities that can analyze data, generate insights, and perform scheduled actions.
 

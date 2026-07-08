@@ -1,11 +1,11 @@
 ---
-page_title: "annotations Data Source - mixpanel"
+page_title: "mixpanel_annotations Data Source - mixpanel"
 subcategory: "Analytics & Reporting"
 description: |-
   Lists every annotation in a project for bulk import and discovery.
 ---
 
-# annotations (Data Source)
+# mixpanel_annotations (Data Source)
 
 Lists every Mixpanel annotation in a project — use it to discover annotation IDs and to bulk-import with `for_each`. See also [`mixpanel_annotation` data source](annotation.md) and [`mixpanel_annotation` resource](../resources/annotation.md).
 

@@ -1,11 +1,11 @@
 ---
-page_title: "cohorts Data Source - mixpanel"
+page_title: "mixpanel_cohorts Data Source - mixpanel"
 subcategory: "Analytics & Reporting"
 description: |-
   Lists every cohort in a project for bulk import and discovery.
 ---
 
-# cohorts (Data Source)
+# mixpanel_cohorts (Data Source)
 
 Lists every Mixpanel cohort in a project — use it to discover cohort IDs and to bulk-import with `for_each`. See also [`mixpanel_cohort` data source](cohort.md) and [`mixpanel_cohort` resource](../resources/cohort.md).
 

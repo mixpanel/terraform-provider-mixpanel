@@ -1,11 +1,11 @@
 ---
-page_title: "annotation Data Source - mixpanel"
+page_title: "mixpanel_annotation Data Source - mixpanel"
 subcategory: "Analytics & Reporting"
 description: |-
   Fetches a Mixpanel annotation by ID to read its date and description.
 ---
 
-# annotation (Data Source)
+# mixpanel_annotation (Data Source)
 
 Fetches a Mixpanel annotation — a timestamped note that marks releases, campaigns, or other events on report timelines.
 

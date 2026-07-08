@@ -1,11 +1,11 @@
 ---
-page_title: "metric Data Source - mixpanel"
+page_title: "mixpanel_metric Data Source - mixpanel"
 subcategory: "Analytics & Reporting"
 description: |-
   Fetches a Mixpanel metric definition by ID to read its name, type, description, and ownership.
 ---
 
-# metric (Data Source)
+# mixpanel_metric (Data Source)
 
 Fetches a Mixpanel metric — a saved calculation that aggregates events or properties to produce a single measurable value. See also [`mixpanel_metric` resource](../resources/metric.md).
 

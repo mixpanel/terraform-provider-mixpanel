@@ -1,11 +1,11 @@
 ---
-page_title: "custom_property Data Source - mixpanel"
+page_title: "mixpanel_custom_property Data Source - mixpanel"
 subcategory: "Analytics & Reporting"
 description: |-
   Fetches a Mixpanel custom property definition by ID.
 ---
 
-# custom_property (Data Source)
+# mixpanel_custom_property (Data Source)
 
 Fetches a Mixpanel custom property — a computed property derived from raw properties, joins, or formulas. See also [`mixpanel_custom_property` resource](../resources/custom_property.md).
 
