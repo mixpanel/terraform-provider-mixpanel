@@ -1,13 +1,13 @@
 ---
 page_title: "mixpanel_dataset Resource - mixpanel"
-subcategory: ""
+subcategory: "Data Pipeline"
 description: |-
-  Manages a Mixpanel dataset.
+  Manages a Mixpanel Dataset, a logical grouping of event data for rollup projects and cross-project aggregation.
 ---
 
 # mixpanel_dataset (Resource)
 
-Manages a Mixpanel dataset.
+Manages a Mixpanel Dataset — a named container that groups event data from one or more Mixpanel projects. Datasets are used in rollup projects to aggregate data across projects or regions.
 
 ## Example Usage
 
@@ -36,3 +36,18 @@ resource "mixpanel_dataset" "events" {
 ### Read-Only
 
 - `dataset_secrets` (Attributes List)
+
+## Import
+
+Import a dataset using `PROJECT_ID:DATASET_ID`:
+
+```terraform
+import {
+  to = mixpanel_dataset.events
+  id = "1234567:my_dataset"
+}
+```
+
+```sh
+terraform import mixpanel_dataset.events 1234567:my_dataset
+```
