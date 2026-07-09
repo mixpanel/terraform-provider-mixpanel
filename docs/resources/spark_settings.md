@@ -35,11 +35,11 @@ resource "mixpanel_spark_settings" "org" {
 
 ## Import
 
-Import the singleton Spark settings for a project by the project id.
+Import the singleton Spark settings for an organization by the organization id.
 
 ```terraform
 import {
   to = mixpanel_spark_settings.example
-  id = "1234567"
+  id = "7654321"
 }
 ```

@@ -70,15 +70,15 @@ Email digest updates use `PATCH` and accept only `name`, `dashboard_id`,
 
 ## Import
 
-Email digests can be imported using their ID:
+Email digests are imported using the composite identifier `project_id:<id>`:
 
 ```terraform
 import {
   to = mixpanel_email_digest.weekly_kpis
-  id = "890"
+  id = "1234567:890"
 }
 ```
 
 ```bash
-terraform import mixpanel_email_digest.weekly_kpis 890
+terraform import mixpanel_email_digest.weekly_kpis '1234567:890'
 ```

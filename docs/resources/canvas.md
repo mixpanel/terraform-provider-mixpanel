@@ -50,15 +50,15 @@ resource "mixpanel_canvas" "kpis" {
 
 ## Import
 
-Canvases can be imported using their ID:
+Canvases are imported using the composite identifier `project_id:<id>` (everything before the first `:` is the project id):
 
 ```terraform
 import {
   to = mixpanel_canvas.kpis
-  id = "abc123"
+  id = "1234567:abc123"
 }
 ```
 
 ```bash
-terraform import mixpanel_canvas.kpis abc123
+terraform import mixpanel_canvas.kpis '1234567:abc123'
 ```
