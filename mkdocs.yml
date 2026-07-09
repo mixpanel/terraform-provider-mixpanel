@@ -54,6 +54,26 @@ plugins:
   - search
   - literate-nav:
       nav_file: SUMMARY.md
+  - llmstxt:
+      markdown_description: |
+        Terraform provider for Mixpanel — manage Mixpanel resources (cohorts,
+        dashboards, metrics, feature flags, governance, and more) as code with
+        Terraform or OpenTofu.
+      full_output: llms-full.txt
+      sections:
+        Getting Started:
+          - index.md
+          - guides/getting-started.md
+          - guides/analytics-as-code.md
+        Guides:
+          - guides/import.md
+          - guides/cross-project-portability.md
+          - guides/drift-detection.md
+          - guides/sharing.md
+  - llmstxt-md:
+      enable_markdown_urls: true
+      enable_copy_button: true
+      enable_llms_txt: false
 
 markdown_extensions:
   - admonition

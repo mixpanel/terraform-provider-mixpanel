@@ -2,6 +2,9 @@
 
 Manage Mixpanel resources as code with Terraform and OpenTofu.
 
+!!! tip "AI-friendly"
+    An [`llms.txt`](llms.txt) map and per-page **Copy markdown** buttons make these docs easy to feed to coding agents and LLMs.
+
 ## Why this exists
 
 Analytics configuration that lives as click-state in a web UI has no version history, no review gate, and no diff to show who changed what or why. When cohorts, metrics, and taxonomy are managed this way, dev and prod drift apart, duplicate event names accrete silently, and the audit trail is whatever people remember. This provider moves durable analytics assets into version-controlled HCL files so changes are reviewed in pull requests, applied by Terraform, and recorded in git — giving you review and blame for analytics, environment parity, drift detection, and governance as code.
