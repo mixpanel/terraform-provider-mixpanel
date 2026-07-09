@@ -28,3 +28,6 @@ gen/build/
 
 # Wiki build output
 build/
+
+# Python bytecode cache (e.g. from scripts/ wiki tests)
+__pycache__/
