@@ -1,0 +1,10 @@
+- [Home](Home)
+- [Getting Started](Getting-Started)
+- [Analytics as Code](Analytics-as-Code)
+- **Guides**
+  - [Import](Import)
+  - [Cross Project Portability](Cross-Project-Portability)
+  - [Drift Detection](Drift-Detection)
+  - [Sharing](Sharing)
+- [Reference](Reference)
+- [Contributing](https://github.com/mixpanel/terraform-provider-mixpanel/blob/main/CONTRIBUTING.md)
