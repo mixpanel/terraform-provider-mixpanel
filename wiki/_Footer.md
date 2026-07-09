@@ -1,0 +1,1 @@
+_This wiki is generated from [`docs/`](https://github.com/mixpanel/terraform-provider-mixpanel/tree/main/docs) in the main repo — do not edit pages here; edit `docs/` and re-run `scripts/build_wiki.py`. Per-resource reference: [Terraform Registry](https://registry.terraform.io/providers/mixpanel/mixpanel/latest/docs)._
