@@ -3,7 +3,7 @@
 Manage Mixpanel resources as code with Terraform and OpenTofu.
 
 !!! tip "AI-friendly"
-    An [`llms.txt`](llms.txt) map and per-page **Copy markdown** buttons make these docs easy to feed to coding agents and LLMs.
+    An <a href="llms.txt">llms.txt</a> map and per-page **Copy markdown** buttons make these docs easy to feed to coding agents and LLMs.
 
 ## Why this exists
 

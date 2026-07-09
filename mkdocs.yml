@@ -54,6 +54,11 @@ plugins:
   - search
   - literate-nav:
       nav_file: SUMMARY.md
+  - llmstxt-md:
+      enable_markdown_urls: true
+      enable_copy_button: true
+      enable_llms_txt: false
+      enable_llms_full: false
   - llmstxt:
       markdown_description: |
         Terraform provider for Mixpanel — manage Mixpanel resources (cohorts,
@@ -70,10 +75,6 @@ plugins:
           - guides/cross-project-portability.md
           - guides/drift-detection.md
           - guides/sharing.md
-  - llmstxt-md:
-      enable_markdown_urls: true
-      enable_copy_button: true
-      enable_llms_txt: false
 
 markdown_extensions:
   - admonition
