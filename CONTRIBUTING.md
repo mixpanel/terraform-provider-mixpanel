@@ -93,3 +93,12 @@ See the [README](README.md) development section and [internal/provider/ACCEPTANC
 - Building the provider
 - Running unit and acceptance tests
 - Setting up `dev_overrides` for local testing with `terraform validate`
+
+## Wiki (auto-generated)
+
+The GitHub Wiki is generated from `docs/` — **do not edit wiki pages by hand**
+(they are overwritten). `.github/workflows/wiki-sync.yml` validates the transform
+on PRs (runs the transform tests and `build_wiki.py --check`) and republishes the
+wiki on merges to `main` that touch `docs/guides/`, `wiki/`, or the wiki scripts,
+authenticating with the `WIKI_SYNC_TOKEN` secret. To publish manually:
+`python3 scripts/build_wiki.py && scripts/publish_wiki.sh`.
