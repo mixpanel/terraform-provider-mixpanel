@@ -9,6 +9,37 @@ from build_pages import (
 )
 
 
+import build_pages
+
+
+class BuildTests(unittest.TestCase):
+    def test_build_and_check(self):
+        build_pages.build()
+        # landing + guides present
+        self.assertTrue((build_pages.OUT / "index.md").exists())
+        self.assertEqual(len(list((build_pages.OUT / "guides").glob("*.md"))), 6)
+        # reference pages present; count EXCLUDES the generated index.md overview
+        for kind in ("resources", "data-sources"):
+            got = [p for p in (build_pages.OUT / kind).glob("*.md") if p.name != "index.md"]
+            self.assertEqual(len(got), len(build_pages.reference_pages(kind)))
+            self.assertTrue((build_pages.OUT / kind / "index.md").exists())
+        # assets copied; SUMMARY generated
+        self.assertTrue((build_pages.OUT / "stylesheets" / "mixpanel.css").exists())
+        self.assertTrue((build_pages.OUT / "javascripts" / "copy-markdown.js").exists())
+        summary = (build_pages.OUT / "SUMMARY.md").read_text()
+        self.assertIn("resources/cohort.md", summary)
+        self.assertIn("Analytics & Reporting", summary)
+        self.assertIn("resources/index.md", summary)
+        self.assertIn("data-sources/index.md", summary)
+        # section-overview links a sibling page with a relative link
+        res_index = (build_pages.OUT / "resources" / "index.md").read_text()
+        self.assertIn("(cohort.md)", res_index)
+        # a transformed reference page has no residual registry frontmatter
+        cohort = (build_pages.OUT / "resources" / "cohort.md").read_text()
+        self.assertFalse(cohort.startswith("---\n"))
+        self.assertEqual(build_pages.check(), 0)
+
+
 class TransformTests(unittest.TestCase):
     def test_strip_frontmatter(self):
         src = '---\npage_title: "x"\nsubcategory: "Analytics & Reporting"\n---\n# H\n\nbody\n'
