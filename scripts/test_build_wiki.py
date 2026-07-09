@@ -57,5 +57,22 @@ class TransformTests(unittest.TestCase):
         self.assertIn("> **Note:** see [x](Sharing)", out)
 
 
+import build_wiki
+
+
+class BuildTests(unittest.TestCase):
+    def test_build_produces_ten_pages_and_check_passes(self):
+        build_wiki.build()
+        pages = {p.stem for p in build_wiki.OUT.glob("*.md")}
+        expected = set(build_wiki.AUTHORED) | set(build_wiki.GUIDE_PAGES.values())
+        self.assertEqual(pages, expected)  # exactly 10
+        self.assertEqual(build_wiki.check(), 0)
+        # transformed guides carry no frontmatter and no residual relative links
+        gs = (build_wiki.OUT / "Getting-Started.md").read_text()
+        self.assertFalse(gs.startswith("---\n"))
+        self.assertNotIn("](../", gs)
+        self.assertNotIn("](./", gs)
+
+
 if __name__ == "__main__":
     unittest.main()

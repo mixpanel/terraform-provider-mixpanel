@@ -80,3 +80,58 @@ def convert_callouts(text: str) -> str:
 
 def transform_guide(text: str) -> str:
     return rewrite_links(convert_callouts(strip_frontmatter(text)))
+
+
+EXPECTED_PAGES = set(AUTHORED) | set(GUIDE_PAGES.values())
+
+
+def build() -> None:
+    OUT.mkdir(parents=True, exist_ok=True)
+    for stale in OUT.glob("*.md"):
+        stale.unlink()
+    for name in AUTHORED:
+        (OUT / f"{name}.md").write_text((WIKI_SRC / f"{name}.md").read_text())
+    for slug, page in GUIDE_PAGES.items():
+        (OUT / f"{page}.md").write_text(transform_guide((DOCS_GUIDES / f"{slug}.md").read_text()))
+
+
+def check() -> int:
+    errors = []
+    pages = {p.stem for p in OUT.glob("*.md")}
+    missing = EXPECTED_PAGES - pages
+    if missing:
+        errors.append(f"missing pages: {sorted(missing)}")
+    for page in sorted(OUT.glob("*.md")):
+        text = page.read_text()
+        if text.startswith("---\n"):
+            errors.append(f"{page.name}: residual frontmatter")
+        for m in LINK_RE.finditer(text):
+            target = m.group(1)
+            path = target.split("#", 1)[0]
+            if not path or "://" in path:
+                continue  # in-page anchor or absolute URL — fine
+            if path.endswith(".md") or path.startswith(("../", "./")):
+                errors.append(f"{page.name}: residual relative link {target!r}")
+            elif "/" not in path and path not in EXPECTED_PAGES:
+                errors.append(f"{page.name}: dangling wiki link {target!r}")
+    if errors:
+        print("CHECK FAILED:")
+        for e in errors:
+            print("  -", e)
+        return 1
+    print(f"CHECK OK: {len(pages)} pages, all links resolve")
+    return 0
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Build the GitHub Wiki tree from docs/.")
+    parser.add_argument("--check", action="store_true", help="verify the generated tree")
+    args = parser.parse_args()
+    build()
+    print(f"built {len(list(OUT.glob('*.md')))} pages -> {OUT.relative_to(REPO)}")
+    if args.check:
+        sys.exit(check())
+
+
+if __name__ == "__main__":
+    main()
