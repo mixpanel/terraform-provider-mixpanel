@@ -1,0 +1,53 @@
+name: Wiki Sync
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - docs/guides/**
+      - wiki/**
+      - scripts/build_wiki.py
+      - scripts/test_build_wiki.py
+      - .github/workflows/wiki-sync.yml
+  push:
+    branches: [main]
+    paths:
+      - docs/guides/**
+      - wiki/**
+      - scripts/build_wiki.py
+      - scripts/test_build_wiki.py
+      - .github/workflows/wiki-sync.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wiki-sync-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Wiki transform tests
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
+
+      - name: Build and verify wiki tree
+        run: python3 scripts/build_wiki.py --check
+
+      - name: Publish to wiki
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          WIKI_SYNC_TOKEN: ${{ secrets.WIKI_SYNC_TOKEN }}
+        run: |
+          if [ -z "${WIKI_SYNC_TOKEN:-}" ]; then
+            echo "::error::WIKI_SYNC_TOKEN secret is not set — cannot publish the wiki." >&2
+            echo "Create a fine-grained PAT (Contents: write on this repo) and add it as the WIKI_SYNC_TOKEN Actions secret." >&2
+            exit 1
+          fi
+          git config --global url."https://x-access-token:${WIKI_SYNC_TOKEN}@github.com/".insteadOf "https://github.com/"
+          ./scripts/publish_wiki.sh
