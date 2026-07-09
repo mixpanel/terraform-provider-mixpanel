@@ -75,6 +75,23 @@ class TransformTests(unittest.TestCase):
         self.assertNotIn("---", out)
         self.assertIn("!!! note\n    see docs", out)
 
+    def test_callout_multiline_continuation(self):
+        src = (
+            "~> **Danger.** line one\n"
+            "line two continues\n"
+            "line three ends\n"
+            "\n"
+            "Normal paragraph.\n"
+        )
+        out = build_pages.convert_callouts(src)
+        lines = out.split("\n")
+        self.assertEqual(lines[0], "!!! warning")
+        self.assertEqual(lines[1], "    **Danger.** line one")
+        self.assertEqual(lines[2], "    line two continues")
+        self.assertEqual(lines[3], "    line three ends")
+        self.assertEqual(lines[4], "")
+        self.assertEqual(lines[5], "Normal paragraph.")
+
 
 if __name__ == "__main__":
     unittest.main()

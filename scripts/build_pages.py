@@ -51,25 +51,40 @@ def read_subcategory(text: str) -> str:
 
 
 def convert_callouts(text: str) -> str:
-    out, in_fence = [], False
-    for line in text.split("\n"):
+    lines = text.split("\n")
+    out, in_fence, i = [], False, 0
+    while i < len(lines):
+        line = lines[i]
         stripped = line.lstrip()
         if stripped.startswith("```"):
             in_fence = not in_fence
             out.append(line)
+            i += 1
             continue
+        marker_match = None
         if not in_fence:
-            converted = None
             for marker, adm in CALLOUTS.items():
                 if stripped.startswith(marker + " "):
-                    converted = (adm, stripped[len(marker) + 1:])
+                    marker_match = (adm, stripped[len(marker) + 1:])
                     break
-            if converted:
-                adm, content = converted
-                out.append(f"!!! {adm}")
-                out.append(f"    {content}")
-                continue
+        if marker_match:
+            adm, first = marker_match
+            out.append(f"!!! {adm}")
+            out.append(f"    {first}")
+            i += 1
+            # Registry callouts soft-wrap across lines; pull the whole paragraph
+            # into the admonition body so continuation lines stay inside the box.
+            while i < len(lines):
+                nxt = lines[i].strip()
+                if nxt == "" or nxt.startswith("```") or nxt.startswith("#"):
+                    break
+                if any(nxt.startswith(m + " ") for m in CALLOUTS):
+                    break
+                out.append(f"    {nxt}")
+                i += 1
+            continue
         out.append(line)
+        i += 1
     return "\n".join(out)
 
 
