@@ -1,0 +1,75 @@
+site_name: Terraform Provider for Mixpanel
+site_description: Manage Mixpanel resources as code with Terraform and OpenTofu.
+site_url: https://mixpanel.github.io/terraform-provider-mixpanel/
+repo_name: mixpanel/terraform-provider-mixpanel
+repo_url: https://github.com/mixpanel/terraform-provider-mixpanel
+
+# Build from the generated tree (scripts/build_pages.py), NOT the repo's docs/.
+docs_dir: build/pages-docs
+# Navigation is generated: build/pages-docs/SUMMARY.md (mkdocs-literate-nav).
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: deep purple
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: deep purple
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  font:
+    text: Inter
+    code: JetBrains Mono
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.instant
+    - navigation.tracking
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - header.autohide
+  icon:
+    repo: fontawesome/brands/github
+
+extra_css:
+  - stylesheets/mixpanel.css
+extra_javascript:
+  - javascripts/copy-markdown.js
+
+plugins:
+  - search
+  - literate-nav:
+      nav_file: SUMMARY.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/mixpanel/terraform-provider-mixpanel
