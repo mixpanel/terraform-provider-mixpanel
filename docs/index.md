@@ -6,18 +6,34 @@ description: |-
 
 # mixpanel Provider
 
+This provider manages your Mixpanel estate — cohorts, metrics, formulas, dashboards, event taxonomy, experiments, data pipelines, and org administration — as version-controlled Terraform code instead of unversioned click-state in a web app. Defining that estate as code gives every change a reviewable history, keeps your dev, staging, and production projects from drifting apart, and surfaces out-of-band edits the next time you run `terraform plan`. It spans 43 resources and 46 data sources across the analytical, governance, and administrative surfaces of Mixpanel, so a large fraction of what you can do in the UI you can also express, review, and version as code. For the full argument — including how `terraform plan` plus pull-request review becomes a natural review harness for AI-proposed changes — see [Analytics as code](./guides/analytics-as-code.md).
+
 > ## ⚠️ Alpha — use at your own risk
 >
-> This provider is in **alpha** (`v0.x` / `-alpha` releases). It is **largely
-> untested**: only a subset of resources has been verified end to end, and many
-> have not been exercised against a live project at all. **Breaking changes may
-> land in any release**, including to resource schemas and state.
+> This provider is in **alpha** (`v0.x` / `-alpha` releases). **Breaking changes
+> may land in any release**, including to resource schemas and state.
+>
+> The testing story has three tiers: (1) in CI, every resource runs a full
+> plan/apply/refresh/destroy lifecycle against an in-process mock of the
+> Mixpanel API; (2) a live acceptance suite (109 tests, green as of the current
+> `main`) exercises core resources against real Mixpanel projects; (3)
+> per-resource maturity is recorded in the table below.
 >
 > Do **not** use it against production Mixpanel projects you cannot afford to
 > disrupt. Always run `terraform plan` and review the diff before applying, and
 > pin an exact version.
 
-Manage Mixpanel resources via the Mixpanel App API.
+## Resource maturity
+
+Every resource is tested; the tiers reflect how far that testing currently goes.
+
+| Tier | Resources |
+| --- | --- |
+| **Live-verified** | `behavior`, `bookmark`, `cohort`, `custom_event`, `custom_property`, `dashboard`, `feature_flag`, `formula`, `metric`, `project` |
+| **Mock-tested** | All other resources |
+
+- **Live-verified** — on top of the mock-API lifecycle, these resources are exercised by the live acceptance suite against real Mixpanel projects.
+- **Mock-tested** — these resources pass the full plan/apply/refresh/destroy lifecycle against the in-process mock API in CI, but have not yet been run against a live project.
 
 ## Example Usage
 
@@ -46,8 +62,24 @@ resource "mixpanel_annotation" "release" {
 
 ## Guides
 
-- [Importing existing Mixpanel objects](./guides/import.md) — Bulk import existing objects into Terraform state
-- [Cross-project portability](./guides/cross-project-portability.md) — Deploy configurations across dev/staging/prod
+- [Analytics as code](./guides/analytics-as-code.md) — Why manage your Mixpanel estate as version-controlled code.
+- [Getting started](./guides/getting-started.md) — Install Terraform or OpenTofu and run the plan/apply loop end to end.
+- [Importing existing Mixpanel objects](./guides/import.md) — Bring objects you already built in the UI under Terraform management.
+- [Cross-project portability](./guides/cross-project-portability.md) — Deploy one configuration across dev, staging, and production projects.
+- [Drift detection](./guides/drift-detection.md) — How the provider detects and reconciles changes made outside Terraform.
+- [Entity sharing](./guides/sharing.md) — Why Terraform-created objects are invisible in the Mixpanel UI by default, and how to fix it.
+
+## Capability map
+
+The provider's resources and data sources group into seven families:
+
+- **Analytics & Reporting** — cohorts, metrics, formulas, dashboards, bookmarks, annotations, and alerts. e.g. [`mixpanel_dashboard`](./resources/dashboard.md).
+- **Governance & Lexicon** — event and property definitions, tags, data groups, lookup tables, and governance settings. e.g. [`mixpanel_lexicon_tag`](./resources/lexicon_tag.md).
+- **Experimentation & Delivery** — experiments and feature flags. e.g. [`mixpanel_experiment`](./resources/experiment.md).
+- **Data Pipeline** — warehouse sources, connectors, datasets, rollup projects, and webhooks. e.g. [`mixpanel_warehouse_source`](./resources/warehouse_source.md).
+- **Session Replay & Heatmaps** — heat maps, heat map collections, and session-replay playlists. e.g. [`mixpanel_heat_map`](./resources/heat_map.md).
+- **AI & Automation** — agent flows, business context, and Spark settings. e.g. [`mixpanel_agent_flow`](./resources/agent_flow.md).
+- **Administration & Access** — projects, teams, service accounts, custom roles, and org/workspace settings. e.g. [`mixpanel_service_account`](./resources/service_account.md).
 
 <!-- schema generated by tfplugindocs -->
 ## Schema

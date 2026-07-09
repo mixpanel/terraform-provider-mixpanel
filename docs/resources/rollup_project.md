@@ -1,13 +1,13 @@
 ---
 page_title: "mixpanel_rollup_project Resource - mixpanel"
-subcategory: ""
+subcategory: "Data Pipeline"
 description: |-
-  Manages a Mixpanel rollup project (organization-scoped).
+  Manages a Mixpanel Rollup Project, which aggregates data from multiple datasets into a unified analytics view.
 ---
 
 # mixpanel_rollup_project (Resource)
 
-Manages a Mixpanel rollup project (organization-scoped).
+Manages a Mixpanel Rollup Project (`mixpanel_rollup_project`) — an organization-scoped project that aggregates event data from multiple datasets. Rollup projects enable cross-region or cross-environment analytics by combining data from separate source projects.
 
 ## Example Usage
 
@@ -37,3 +37,18 @@ resource "mixpanel_rollup_project" "all_regions" {
 
 - `datasets` (Attributes Map)
 - `rollup_projects` (Attributes Map)
+
+## Import
+
+Import a rollup project using its ID directly (rollup projects are organization-scoped and do not require a project_id prefix):
+
+```terraform
+import {
+  to = mixpanel_rollup_project.all_regions
+  id = "33914"
+}
+```
+
+```sh
+terraform import mixpanel_rollup_project.all_regions 33914
+```

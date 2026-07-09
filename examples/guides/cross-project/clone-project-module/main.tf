@@ -41,26 +41,27 @@ variable "alert_threshold" {
 resource "mixpanel_custom_property" "properties" {
   for_each = {
     user_tier = {
-      data_type   = "string"
-      description = "Customer tier level"
+      display_name = "User Tier"
+      description  = "Customer tier level"
     }
     lifetime_value = {
-      data_type   = "number"
-      description = "Total customer lifetime value"
+      display_name = "Lifetime Value"
+      description  = "Total customer lifetime value"
     }
     last_active = {
-      data_type   = "datetime"
-      description = "Last activity timestamp"
+      display_name = "Last Active"
+      description  = "Last activity timestamp"
     }
     feature_flags = {
-      data_type   = "list"
-      description = "Active feature flags for user"
+      display_name = "Feature Flags"
+      description  = "Active feature flags for user"
     }
   }
 
-  project_id  = var.project_id
-  name        = title(replace(each.key, "_", " "))
-  description = each.value.description
+  project_id   = var.project_id
+  name         = each.key
+  display_name = each.value.display_name
+  description  = each.value.description
 
   # Make computed properties visible in UI
   is_visible = true
@@ -68,13 +69,14 @@ resource "mixpanel_custom_property" "properties" {
 
 # Data group for lookup tables
 resource "mixpanel_data_group" "user_attributes" {
-  project_id = var.project_id
-  name       = "User Attributes"
+  project_id    = var.project_id
+  display_name  = "User Attributes"
+  property_name = "user_attribute_id"
 
   # Optional metadata
-  # metadata = {
-  #   description = "Additional user attributes from CRM"
-  # }
+  metadata = {
+    description = "Additional user attributes from CRM"
+  }
 }
 
 # Cohorts with dependencies
@@ -84,14 +86,26 @@ resource "mixpanel_cohort" "high_value_users" {
   description = "Users with LTV > 1000"
   is_visible  = true
 
-  selector = jsonencode({
-    filter = {
-      # Reference the custom property ID (auto-resolved)
-      property_id = mixpanel_custom_property.properties["lifetime_value"].id
-      operator    = ">"
-      value       = 1000
+  groups = jsonencode([
+    {
+      event = {
+        resourceType = "cohort"
+        value        = "$all_users"
+        label        = "All Users"
+      }
+      filters = [
+        {
+          # Reference the custom property ID (auto-resolved)
+          property_id = mixpanel_custom_property.properties["lifetime_value"].id
+          operator    = ">"
+          value       = 1000
+        }
+      ]
+      filtersOperator           = "and"
+      behavioralFilters         = []
+      behavioralFiltersOperator = "or"
     }
-  })
+  ])
 
   # Explicit dependency (usually inferred, but makes intent clear)
   depends_on = [mixpanel_custom_property.properties]
@@ -103,13 +117,25 @@ resource "mixpanel_cohort" "premium_users" {
   description = "Users on premium tier"
   is_visible  = true
 
-  selector = jsonencode({
-    filter = {
-      property_id = mixpanel_custom_property.properties["user_tier"].id
-      operator    = "=="
-      value       = "premium"
+  groups = jsonencode([
+    {
+      event = {
+        resourceType = "cohort"
+        value        = "$all_users"
+        label        = "All Users"
+      }
+      filters = [
+        {
+          property_id = mixpanel_custom_property.properties["user_tier"].id
+          operator    = "=="
+          value       = "premium"
+        }
+      ]
+      filtersOperator           = "and"
+      behavioralFilters         = []
+      behavioralFiltersOperator = "or"
     }
-  })
+  ])
 }
 
 resource "mixpanel_cohort" "at_risk_users" {
@@ -118,19 +144,25 @@ resource "mixpanel_cohort" "at_risk_users" {
   description = "High-value users who haven't been active recently"
   is_visible  = true
 
-  selector = jsonencode({
-    and = [
-      {
-        # Reference another cohort
-        cohort_id = mixpanel_cohort.high_value_users.id
-      },
-      {
-        property_id = mixpanel_custom_property.properties["last_active"].id
-        operator    = "not_within"
-        value       = "30d"
+  groups = jsonencode([
+    {
+      event = {
+        resourceType = "cohort"
+        value        = mixpanel_cohort.high_value_users.id
+        label        = "High-Value Users"
       }
-    ]
-  })
+      filters = [
+        {
+          property_id = mixpanel_custom_property.properties["last_active"].id
+          operator    = "not_within"
+          value       = "30d"
+        }
+      ]
+      filtersOperator           = "and"
+      behavioralFilters         = []
+      behavioralFiltersOperator = "or"
+    }
+  ])
 
   # Explicit dependencies
   depends_on = [
@@ -140,39 +172,12 @@ resource "mixpanel_cohort" "at_risk_users" {
 }
 
 # Dashboards
+# Note: Dashboard content (report cells) is managed via mixpanel_bookmark
+# resources rather than inline metadata
 resource "mixpanel_dashboard" "overview" {
-  project_id = var.project_id
-  name       = "Overview Dashboard [${upper(var.environment)}]"
-
-  metadata = jsonencode({
-    description = "Main analytics dashboard for ${var.environment}"
-
-    charts = [
-      {
-        type  = "insights"
-        title = "Daily Active Users by Tier"
-        query = {
-          event = "Session Start"
-          breakdown = {
-            property_id = mixpanel_custom_property.properties["user_tier"].id
-          }
-          filters = {
-            cohort_id = mixpanel_cohort.premium_users.id
-          }
-        }
-      },
-      {
-        type  = "funnel"
-        title = "Premium Conversion"
-        query = {
-          steps = [
-            { event = "Trial Start" },
-            { event = "Upgrade" }
-          ]
-        }
-      }
-    ]
-  })
+  project_id  = var.project_id
+  title       = "Overview Dashboard [${upper(var.environment)}]"
+  description = "Main analytics dashboard for ${var.environment}"
 }
 
 # Custom alert

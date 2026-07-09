@@ -1,13 +1,13 @@
 ---
 page_title: "mixpanel_webhook Resource - mixpanel"
-subcategory: ""
+subcategory: "Data Pipeline"
 description: |-
-  Manages a Mixpanel project webhook destination.
+  Manages a Mixpanel Webhook, which sends real-time event data to an external HTTP endpoint.
 ---
 
 # mixpanel_webhook (Resource)
 
-Manages a Mixpanel project webhook destination.
+Manages a Mixpanel Webhook (`mixpanel_webhook`) — an outbound HTTP destination that receives real-time event data from a Mixpanel project. Webhooks can send events to external services as they arrive.
 
 ## Example Usage
 
@@ -47,3 +47,18 @@ resource "mixpanel_webhook" "example" {
 - `id` (String) The ID of this resource.
 - `is_enabled` (Boolean)
 - `modified` (String)
+
+## Import
+
+Import a webhook using `PROJECT_ID:WEBHOOK_ID`:
+
+```terraform
+import {
+  to = mixpanel_webhook.example
+  id = "1234567:webhook_abc123"
+}
+```
+
+```sh
+terraform import mixpanel_webhook.example 1234567:webhook_abc123
+```

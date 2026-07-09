@@ -1,13 +1,14 @@
 ---
 page_title: "mixpanel_property_definition Data Source - mixpanel"
-subcategory: ""
+subcategory: "Governance & Lexicon"
 description: |-
-  Reads the Lexicon metadata of one event or profile property.
+  Fetches a Mixpanel Lexicon property definition by name.
 ---
 
 # mixpanel_property_definition (Data Source)
 
-Reads the Lexicon metadata of one event or profile property by name.
+Fetches a Mixpanel **Lexicon property definition** by name — the metadata,
+type, visibility, and documentation for one event or profile property.
 
 -> The API never returns 404 for an unknown property name — it synthesizes an
 empty definition with `id = 0`. Check the `exists` attribute to distinguish "a

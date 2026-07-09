@@ -1,4 +1,4 @@
-.PHONY: help test test-unit test-acceptance test-acc-cohort test-acc-dashboard test-acc-all build install clean
+.PHONY: help test test-unit test-acceptance test-acc-cohort test-acc-dashboard test-acc-all build install clean docs
 
 help:
 	@echo "Mixpanel Terraform Provider - Available targets:"
@@ -106,8 +106,11 @@ fmt:
 lint:
 	golangci-lint run
 
-# Generate documentation
+# Docs under docs/ are HAND-CURATED (see gen/README.md step 6 and CONTRIBUTING.md).
+# Do not wire tfplugindocs here: only templates/index.md.tmpl exists, so
+# regeneration would overwrite every hand-written page.
 docs:
-	go generate ./...
+	@echo "docs/ is hand-curated. Edit the Markdown directly; do not run tfplugindocs."
+	@echo "See CONTRIBUTING.md and gen/README.md (step 6)."
 
 .DEFAULT_GOAL := help

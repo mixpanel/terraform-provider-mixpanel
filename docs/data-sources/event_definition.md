@@ -1,13 +1,14 @@
 ---
 page_title: "mixpanel_event_definition Data Source - mixpanel"
-subcategory: ""
+subcategory: "Governance & Lexicon"
 description: |-
-  Fetches a Mixpanel event definition (Lexicon event entry) by ID.
+  Fetches a Mixpanel Lexicon event definition by ID.
 ---
 
 # mixpanel_event_definition (Data Source)
 
-Fetches a Mixpanel event definition (Lexicon event entry) by ID.
+Fetches a Mixpanel **Lexicon event definition** by ID — the metadata, tags,
+verification status, and ownership of a tracked event.
 
 ## Example Usage
 

@@ -52,20 +52,30 @@ resource "mixpanel_cohort" "power_users" {
   is_visible  = true
 
   # Environment-specific thresholds
-  selector = jsonencode({
-    and = [
-      {
-        property = "session_count"
-        operator = ">="
-        value    = each.value.cohort_size_threshold
-      },
-      {
-        property = "last_seen"
-        operator = "within"
-        value    = "${each.value.engagement_days}d"
+  groups = jsonencode([
+    {
+      event = {
+        resourceType = "cohort"
+        value        = "$all_users"
+        label        = "All Users"
       }
-    ]
-  })
+      filters = [
+        {
+          property = "session_count"
+          operator = ">="
+          value    = each.value.cohort_size_threshold
+        },
+        {
+          property = "last_seen"
+          operator = "within"
+          value    = "${each.value.engagement_days}d"
+        }
+      ]
+      filtersOperator           = "and"
+      behavioralFilters         = []
+      behavioralFiltersOperator = "or"
+    }
+  ])
 }
 
 # Create a "Recent Signups" cohort in each environment
@@ -77,13 +87,25 @@ resource "mixpanel_cohort" "recent_signups" {
   description = "Users who signed up in the last ${each.value.engagement_days} days"
   is_visible  = true
 
-  selector = jsonencode({
-    filter = {
-      property = "signup_date"
-      operator = "within"
-      value    = "${each.value.engagement_days}d"
+  groups = jsonencode([
+    {
+      event = {
+        resourceType = "cohort"
+        value        = "$all_users"
+        label        = "All Users"
+      }
+      filters = [
+        {
+          property = "signup_date"
+          operator = "within"
+          value    = "${each.value.engagement_days}d"
+        }
+      ]
+      filtersOperator           = "and"
+      behavioralFilters         = []
+      behavioralFiltersOperator = "or"
     }
-  })
+  ])
 }
 
 # Output cohort IDs for verification

@@ -1,13 +1,13 @@
 ---
 page_title: "mixpanel_workspace Resource - mixpanel"
-subcategory: ""
+subcategory: "Administration & Access"
 description: |-
-  Manages a Mixpanel workspace.
+  Manages a Mixpanel workspace within a project.
 ---
 
 # mixpanel_workspace (Resource)
 
-Manages a Mixpanel workspace.
+Manages a Mixpanel workspace — an isolated view within a project that organizes reports and controls which team members can access specific analytics content.
 
 ## Example Usage
 
@@ -52,3 +52,14 @@ resource "mixpanel_workspace" "marketing" {
 - `requesting_user_teams` (List of String)
 - `team_list` (Attributes List)
 - `unified_member_list` (Attributes List)
+
+## Import
+
+Import using the composite identifier `project_id:<id>`:
+
+```terraform
+import {
+  to = mixpanel_workspace.marketing
+  id = "1234567:9876543"
+}
+```

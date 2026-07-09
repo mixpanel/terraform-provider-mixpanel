@@ -1,8 +1,8 @@
 ---
 page_title: "mixpanel_theme Resource - mixpanel"
-subcategory: ""
+subcategory: "Analytics & Reporting"
 description: |-
-  Manages a Mixpanel theme.
+  Manages a dashboard theme for consistent visual styling.
 ---
 
 # mixpanel_theme (Resource)
@@ -35,3 +35,18 @@ resource "mixpanel_theme" "brand" {
 - `global_access_type` (String) One of: `off`, `viewer`, `editor`.
 - `project_id` (Number)
 - `theme_id` (Number)
+
+## Import
+
+Themes can be imported using the composite `PROJECT_ID:ID` format:
+
+```terraform
+import {
+  to = mixpanel_theme.brand
+  id = "1234567:890"
+}
+```
+
+```bash
+terraform import mixpanel_theme.brand 1234567:890
+```

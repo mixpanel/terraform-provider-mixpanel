@@ -1,13 +1,17 @@
 ---
 page_title: "mixpanel_data_governance_settings Resource - mixpanel"
-subcategory: ""
+subcategory: "Governance & Lexicon"
 description: |-
-  Manages the data governance settings for a Mixpanel project.
+  Manages data governance settings for a Mixpanel project (singleton resource).
 ---
 
 # mixpanel_data_governance_settings (Resource)
 
-Manages the data governance settings for a Mixpanel project.
+Manages the data governance settings for a Mixpanel project. This is a
+**singleton** resource — one per project, with no separate object id. The
+provider currently exposes only the `project_id` attribute; additional
+governance settings may be added in future releases as the Mixpanel API
+expands.
 
 ## Example Usage
 
@@ -22,4 +26,12 @@ resource "mixpanel_data_governance_settings" "example" {
 
 ### Optional
 
-- `project_id` (Number)
+- `project_id` (Number) The project ID (defaults to the provider project). Changing it forces a new resource.
+
+## Import
+
+The import ID is just the project ID (no separate object id):
+
+```bash
+terraform import mixpanel_data_governance_settings.example 1234567
+```

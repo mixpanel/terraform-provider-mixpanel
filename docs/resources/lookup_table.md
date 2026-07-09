@@ -1,6 +1,6 @@
 ---
 page_title: "mixpanel_lookup_table Resource - mixpanel"
-subcategory: ""
+subcategory: "Governance & Lexicon"
 description: |-
   Manages a Mixpanel lookup table: uploads CSV content through the signed-URL handshake and keeps the table's name/description in sync.
 ---

@@ -23,7 +23,7 @@ carries a `share_with_project` attribute:
 
 ```terraform
 resource "mixpanel_dashboard" "kpis" {
-  name = "Team KPIs"
+  title = "Team KPIs"
 
   # Default; shown for clarity. Set to false to keep the entity
   # private to the service account.
