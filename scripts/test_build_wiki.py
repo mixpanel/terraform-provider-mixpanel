@@ -1,4 +1,11 @@
+import os
+import sys
 import unittest
+
+# Make the sibling build_wiki.py importable regardless of the caller's cwd,
+# so `python3 -m unittest` / `python3 scripts/test_build_wiki.py` work from anywhere.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from build_wiki import (
     strip_frontmatter, rewrite_link, rewrite_links, convert_callouts, transform_guide,
 )

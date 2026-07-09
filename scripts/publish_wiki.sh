@@ -31,6 +31,13 @@ if git -C "$TMP" diff --cached --quiet; then
   echo "wiki already up to date; nothing to push"
   exit 0
 fi
+# Ensure a commit identity. Uses your configured git identity when present;
+# otherwise falls back to an automation identity so fresh shells / CI don't
+# abort mid-run with "Please tell me who you are".
+if [ -z "$(git -C "$TMP" config user.email)" ]; then
+  git -C "$TMP" config user.email "actions@github.com"
+  git -C "$TMP" config user.name "mixpanel-wiki-sync"
+fi
 git -C "$TMP" commit -q -m "wiki: sync from docs @ $SHA"
 git -C "$TMP" push -q origin HEAD
 echo "pushed wiki update (docs @ $SHA)"
