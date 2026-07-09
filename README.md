@@ -101,9 +101,11 @@ walkthrough aimed at people new to Terraform, see
 
 ## Documentation
 
-The complete reference for every resource and data source lives on the
-[Terraform Registry](https://registry.terraform.io/providers/mixpanel/mixpanel/latest/docs)
-and under [`docs/`](./docs/index.md). Guides:
+- **[Documentation site](https://mixpanel.github.io/terraform-provider-mixpanel/)** — guides, concepts, and the full resource/data-source reference (primary).
+- **[Terraform Registry](https://registry.terraform.io/providers/mixpanel/mixpanel/latest/docs)** — the Terraform-native reference, versioned per release.
+- **[Wiki](https://github.com/mixpanel/terraform-provider-mixpanel/wiki)** — quick in-GitHub entry point.
+
+Guides:
 
 - [Analytics as code](./docs/guides/analytics-as-code.md) — why manage your Mixpanel estate
   as version-controlled code.
