@@ -52,7 +52,7 @@ Notes:
   `expected import ID in the form "project_id:<id>"`.
 
 You do **not** have to assemble these strings by hand. The plural data sources
-(see [section 3](#3-bulk-import-with-a-plural-data-source--for_each)) expose an
+(see [section 3](#3-bulk-import-with-a-plural-data-source-and-for_each)) expose an
 `import_ids` attribute that emits the correct composite for every object.
 
 ---
@@ -109,7 +109,7 @@ it is harmless; Terraform treats already-imported objects as a no-op).
 
 ---
 
-## 3. Bulk import with a plural data source + `for_each`
+## 3. Bulk import with a plural data source and `for_each`
 
 To import **every** object of a kind in a project, pair a plural data source
 with a `for_each` import block. The provider ships a plural list data source for
