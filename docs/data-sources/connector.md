@@ -9,8 +9,6 @@ description: |-
 
 Fetches a Mixpanel data pipeline **connector** (`mixpanel_connector`) by its unique identifier and project. Connectors enable data imports into Mixpanel from external sources like cloud warehouses.
 
-See the [`mixpanel_connector` resource](../resources/connector.md) to manage connectors.
-
 ## Example Usage
 
 ```terraform

@@ -21,7 +21,6 @@ func providerResources() []func() resource.Resource {
 		NewBusinessContextResource,
 		NewCanvasResource,
 		NewCohortResource,
-		NewConnectorResource,
 		NewCustomAlertResource,
 		NewCustomEventResource,
 		NewCustomPropertyResource,

@@ -144,18 +144,18 @@
       "resource_name": "connector",
       "read_schema": "Connector",
       "id_attr": "connector_id",
-      "create_req_schema": "CreateConnectorRequestModel",
+      "create_req_schema": null,
       "collection": "connector",
       "instance": "connector",
       "update": null,
-      "delete": "delete",
+      "delete": null,
       "jsonencode_fields": [
         "category_properties",
         "connector_properties"
       ],
       "collapse_fields": [],
       "drop_reason": "",
-      "notes": "Real CRUD entity (data pipeline connector). GET returns BaseOkResponseModel_Connector_ wrapping typed Connector in results, so read_schema=Connector. create=POST /api/app/projects/{project_id}/connectors with body CreateConnectorRequestModel. delete=DELETE on /api/app/projects/{project_id}/connectors/{connector_id}. No update endpoint (update=null). id_attr=connector_id: Connector has no 'id' but exposes connector_id matching the {connector_id} path param. jsonencode: kept connector_properties (free-form additionalProperties:true object) and category_properties (CategoryProperties has polymorphic member 'events' string|array, safer as JSON string). DROPPED created_by from jsonencode: UserInfo is a fixed-shape flat typed object (id/name/email scalars), not dynamic, so does not qualify. collapse_fields empty: all entity anyOf are scalar+null nullable, not 2+ plain scalars. (collection/instance fields echoed as resource short name since schema only allows scalar strings.)"
+      "notes": "DATA-SOURCE-ONLY. Read instance GET is /api/app/projects/{project_id}/connectors/{connector_id}; GET returns BaseOkResponseModel_Connector_ wrapping typed Connector in results, so read_schema=Connector. id_attr=connector_id: Connector has no 'id' but exposes connector_id matching the {connector_id} path param. There is no create endpoint: POST /api/app/projects/{project_id}/connectors was removed from webapp along with the Nessie export-pipeline backend it depended on, so the entity cannot be registered as a resource. jsonencode: connector_properties (free-form additionalProperties:true object) and category_properties (CategoryProperties has polymorphic member 'events' string|array, safer as JSON string). (collection/instance fields echoed as resource short name since schema only allows scalar strings.)"
     },
     {
       "short": "custom_roles",

@@ -125,20 +125,6 @@ resources:
     delete:
       path: /api/app/projects/{project_id}/cohorts/{cohort_id}
       method: DELETE
-  connector:
-    schema:
-      ignores:
-        - category_properties
-        - connector_properties
-    create:
-      path: /api/app/projects/{project_id}/connectors
-      method: POST
-    read:
-      path: /api/app/projects/{project_id}/connectors/{connector_id}
-      method: GET
-    delete:
-      path: /api/app/projects/{project_id}/connectors/{connector_id}
-      method: DELETE
   custom_role:
     create:
       path: /api/app/projects/{project_id}/custom-roles

@@ -20,7 +20,7 @@ Feature flags and A/B experiments.
 
 ### Data Pipeline
 Warehouse connections, ingestion connectors, and data routing.  
-**Example resources:** [warehouse_source](https://registry.terraform.io/providers/mixpanel/mixpanel/latest/docs/resources/warehouse_source), [connector](https://registry.terraform.io/providers/mixpanel/mixpanel/latest/docs/resources/connector)
+**Example resources:** [warehouse_source](https://registry.terraform.io/providers/mixpanel/mixpanel/latest/docs/resources/warehouse_source)
 
 ### Session Replay & Heatmaps
 Capturing and analyzing user sessions.  

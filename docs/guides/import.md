@@ -197,7 +197,6 @@ data "mixpanel_annotations" "all" {
 returned by the API after creation:
 
 - `service_account` — the account's **token/secret** is write-only.
-- `connector` — warehouse **credentials** are write-only.
 
 A `terraform import` sets the object's identity and scope, but these secret
 attributes import as `null`. Expect a one-time diff on the secret attribute on
