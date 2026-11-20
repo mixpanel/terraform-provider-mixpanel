@@ -796,6 +796,20 @@
     },
     {
       "keep": true,
+      "resource_name": "service_account_project",
+      "capability": "rpc_assoc",
+      "id_attr": "id",
+      "create_path": "/organizations/{organization_id}/add-to-project/",
+      "list_path": "/api/app/organizations/{organization_id}/service-accounts",
+      "delete_path": "/organizations/{organization_id}/remove-from-project/",
+      "key_doc": "composite key identifying the service account and project association (format: serviceaccount_id:project_id)",
+      "jsonencode_fields": [],
+      "collapse_fields": [],
+      "notes": "Existing RPC association resource with a hand-written implementation preserved by crudgen. Read joins ServiceAccountModel numeric id and nested projects[].id/role; import reconstructs organization_id:key and the documented numeric serviceaccount_id/project_id payload. Read role fields do not prove the add endpoint accepts role. No update verb; payload changes replace membership without replacing the account.",
+      "rpc_assoc": true
+    },
+    {
+      "keep": true,
       "resource_name": "team",
       "capability": "rpc_assoc",
       "id_attr": "id",
