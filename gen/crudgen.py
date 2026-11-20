@@ -591,6 +591,13 @@ SCHEMA_OVERRIDES = {
 			}},
 		}},
 	}}""",
+    # Credentials returned in resource responses need Terraform CLI redaction.
+    "service_account": """\ttokenAttr := s.Attributes["token"].(schema.StringAttribute)
+\ttokenAttr.Sensitive = true
+\ts.Attributes["token"] = tokenAttr""",
+    "project": """\tapiSecretAttr := s.Attributes["api_secret"].(schema.StringAttribute)
+\tapiSecretAttr.Sensitive = true
+\ts.Attributes["api_secret"] = apiSecretAttr""",
 }
 
 

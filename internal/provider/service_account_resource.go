@@ -53,6 +53,9 @@ func (r *ServiceAccountResource) Metadata(ctx context.Context, req resource.Meta
 
 func (r *ServiceAccountResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	s := rsc.ServiceAccountResourceSchema(ctx)
+	tokenAttr := s.Attributes["token"].(schema.StringAttribute)
+	tokenAttr.Sensitive = true
+	s.Attributes["token"] = tokenAttr
 	// `expires` is writable on create (webapp create_service_account accepts an
 	// optional expiration); the generated schema marked it Computed-only. Make
 	// it settable and replace-on-change like every other attribute (the API has

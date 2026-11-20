@@ -44,7 +44,7 @@ resource "mixpanel_service_account" "terraform" {
 - `creator_name` (String)
 - `id` (Number) The ID of this resource.
 - `last_used` (String)
-- `token` (String)
+- `token` (String, Sensitive)
 - `user` (Number)
 
 <a id="nestedatt--projects"></a>
