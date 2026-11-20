@@ -50,6 +50,9 @@ func (r *ProjectResource) Metadata(ctx context.Context, req resource.MetadataReq
 
 func (r *ProjectResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	s := rsc.ProjectResourceSchema(ctx)
+	apiSecretAttr := s.Attributes["api_secret"].(schema.StringAttribute)
+	apiSecretAttr.Sensitive = true
+	s.Attributes["api_secret"] = apiSecretAttr
 	// `name` is intentionally NOT RequiresReplace: replacing a project DELETES
 	// the project and all its analytics data. Renames are performed in place by
 	// Update via POST /projects/update/{id}/ (the same endpoint the webapp uses,

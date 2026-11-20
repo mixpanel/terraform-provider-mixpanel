@@ -65,7 +65,7 @@ resource "mixpanel_project" "new" {
 ### Read-Only
 
 - `api_key` (String)
-- `api_secret` (String)
+- `api_secret` (String, Sensitive)
 - `id` (Number) The ID of this resource.
 - `timezone_name` (String)
 - `token` (String)
