@@ -9,6 +9,14 @@ description: |-
 
 Manages a Mixpanel service account — a non-interactive account used for programmatic API access. Service accounts can be assigned organization or project roles and optionally configured with an expiration timestamp.
 
+Service-account configuration changes require account replacement because the
+API has no account update operation. To manage project memberships while keeping
+account credentials stable, use `mixpanel_service_account_project` resources and
+omit inline `projects` from this resource's configuration. Do not give both the
+account and standalone association resources ownership of the same grant. See
+[service_account_project](service_account_project.md) for import behavior and the
+unverified role-write contract.
+
 ## Example Usage
 
 ```terraform

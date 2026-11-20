@@ -3154,6 +3154,15 @@ def emit_rpc_assoc(name, man, outdir, module):
     schema_path = os.path.join(pkg_dir, "%s_resource_gen.go" % name)
     open(schema_path, "w").write(schema_src)
 
+    # Hand-written exception: the typed ServiceAccountModel response nests numeric
+    # project grants under an account. Generic recursive key search cannot read it
+    # or reconstruct import state; preserve the reviewed implementation on regen.
+    if name == "service_account_project":
+        res_path = os.path.join(outdir, "%s_resource.go" % name)
+        if not os.path.exists(res_path):
+            raise RuntimeError("missing hand-written service_account_project_resource.go")
+        return [schema_path]
+
     res_src = RPC_ASSOC_RESOURCE_TMPL.format(
         module=module,
         entity=name,
